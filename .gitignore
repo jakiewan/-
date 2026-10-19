@@ -226,3 +226,4 @@ __marimo__/
 .gitignore
 .vscode/changelists.json
 /.env.example
+.DS_Store
