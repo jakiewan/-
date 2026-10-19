@@ -227,3 +227,6 @@ __marimo__/
 .vscode/changelists.json
 /.env.example
 .DS_Store
+/.history/
+/.learnings/
+/.vscode/
