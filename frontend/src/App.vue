@@ -124,7 +124,7 @@ async function sendMessage() {
           <input id="question" v-model="question" type="text" placeholder="输入你的问题…" autocomplete="off" @keydown.enter="($event.isComposing || $event.keyCode === 229) && $event.preventDefault()" />
           <button type="submit" :disabled="sending || switching || !question.trim()">{{ sending ? '发送中…' : '发送' }} <span aria-hidden="true">↗</span></button>
         </form>
-        <p class="input-hint">按 Enter 发送 <span>回复来自后端接口，刷新后对话将清空</span></p>
+        <p class="input-hint">按 Enter 发送 <span>记忆按账号保存，刷新仅清空显示</span></p>
       </footer>
     </section>
     <p class="page-footer">让每一个问题，都得到回应。</p>

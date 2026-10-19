@@ -14,6 +14,8 @@ python3 main.py
 
 首次运行仍需按下方步骤安装依赖和配置 `.env`。
 
+后端启动时需要可连接的 PostgreSQL 和有效的模型配置。根目录 `.env` 中设置 `DATABASE_URL=postgresql://用户名:密码@地址:端口/数据库名`；也兼容当前已有的 `postgresql+psycopg://` 格式。数据库必须已创建，账号需要在该数据库内创建 schema 和表的权限。
+
 需要 Node.js 22.12+（或 20.19+）和 Python 3.10+。先将根目录 `.env.example` 复制为 `.env`，填入真实 `MINIMAX_API_KEY`；`.env` 已被 Git 忽略，密钥仅由后端读取。国内平台默认地址为 `https://api.minimax.cn/v1`，国际平台需将 `MINIMAX_BASE_URL` 改为 `https://api.minimax.io/v1`。
 
 在项目根目录启动后端：
@@ -81,6 +83,12 @@ curl -b /tmp/customer-chat-cookies http://127.0.0.1:5173/api/chat \
 
 页面和发送逻辑位于 `src/App.vue`，样式位于 `src/style.css`，接口位于 `../backend/main.py`。
 
-`../backend/minimax_client.py` 封装模型和 Agent；当前没有业务工具、知识库或多轮记忆，每次请求只提交本次问题，刷新会清空页面记录。
+`../backend/minimax_client.py` 封装模型和 Agent，使用 `AsyncPostgresSaver` 将线程状态持久化到 PostgreSQL。后端启动时创建连接池、初始化检查点表并创建 Agent，关闭时释放连接；本项目使用独立的 `customer_chat` schema，不使用已有的 `public` 检查点表。
+
+每个账号固定一个对话：后端从登录态读取当前账号名作为 `user_id`，生成 `thread_id = "chat:" + user_id`，不接受前端指定的用户或线程 ID。前端继续只提交 `message`，历史由 Saver 自动恢复与保存；同一线程的请求通过 PostgreSQL advisory transaction lock 串行执行。当前账号名是记忆的归属标识，修改或将账号名分配给其他人会影响对应记忆的归属。
+
+退出、切换账号和后端重启不会删除数据库中的对话记忆；重启后仍需重新登录同一个账号才能继续。刷新页面会清空界面显示，后端记忆保留，当前未提供历史展示或清空记忆接口。
+
+检查点由框架按执行步骤保存，上游请求失败也可能保留输入或中间状态。当前保留完整对话状态，尚未加入长对话摘要、上下文 Token 裁剪、长期记忆或数据保留策略。
 
 接口参考：[MiniMax OpenAI 兼容接口](https://platform.minimax.cn/docs/api-reference/text-openai-api)、[LangChain Agent](https://docs.langchain.com/oss/python/langchain/agents)。

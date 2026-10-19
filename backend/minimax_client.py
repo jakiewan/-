@@ -4,10 +4,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 
 class MiniMaxClient:
-    def __init__(self):
+    def __init__(self, checkpointer: AsyncPostgresSaver):
         load_dotenv(Path(__file__).resolve().parents[1] / ".env")
         api_key = os.getenv("MINIMAX_API_KEY")
         if not api_key:
@@ -24,12 +25,15 @@ class MiniMaxClient:
         )
         self.agent = create_agent(
             model=model,
+            checkpointer=checkpointer,
             system_prompt="你是客服助手，请用简洁准确的中文回答，不要编造无法确认的业务信息。",
         )
 
-    async def chat(self, message: str) -> str:
+    async def chat(self, message: str, thread_id: str) -> str:
+        # shortcut: 当前保留完整对话状态，长对话接近模型上下文上限时需增加裁剪或摘要。
         result = await self.agent.ainvoke(
-            {"messages": [{"role": "user", "content": message}]}
+            {"messages": [{"role": "user", "content": message}]},
+            {"configurable": {"thread_id": thread_id}},
         )
         reply = result["messages"][-1].text
         if not reply.strip():
