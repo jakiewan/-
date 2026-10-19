@@ -32,7 +32,7 @@ Follow existing two-space indentation, single-quoted JavaScript strings, and omi
 
 ## Testing Guidelines
 
-**项目长期规则：禁止生成过度测试、过度防御的代码或测试文件。** 仅针对当前需求和实际风险添加必要验证，优先复用现有测试；简单文档、样式或低风险改动不新增测试文件。不为假设场景堆叠校验、兜底、重试或抽象；保留外部输入校验、安全边界及防止数据丢失所必需的错误处理。
+**项目长期规则：禁止生成过度测试、过度防御的代码或测试文件。** 尽量使用 curl 调接口传参数并结合打印的日志进行测试, 不要额外写测试代码
 
 Place browser tests in `frontend/tests/*.spec.js` using `@playwright/test`. Prefer role-based locators and assertions on visible behavior. Existing checks cover blank input, button/Enter submission, Chinese input composition, simulated replies, reload reset, mobile overflow, and HTML displayed as text. Update relevant checks when behavior changes. Run `npm run build` and `npm test` before submitting application changes. No coverage threshold is configured.
 

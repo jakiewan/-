@@ -48,6 +48,19 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .input-hint { display: flex; justify-content: space-between; gap: 8px; margin: 10px 2px 0; color: #8b978f; font-size: 11px; line-height: 1.6; }
 .page-footer { margin: 22px 0 0; text-align: center; font-size: 11px; color: #9ca79f; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.login-card { max-width: 420px; margin: 36px auto; padding: 32px; background: #fff; border: 1px solid #e0e8e2; border-radius: 20px; }
+.login-card h2 { margin: 20px 0 10px; font-size: 22px; }
+.login-description { margin: 0 0 26px; font-size: 13px; color: #7b8982; }
+.login-form { display: flex; flex-direction: column; gap: 10px; }
+.login-form label { margin-top: 4px; font-size: 13px; }
+.login-form input { flex: none; width: 100%; padding: 12px; border: 1px solid #dce5de; border-radius: 8px; }
+.login-form button { margin-top: 10px; padding: 13px; }
+.auth-error { margin: 10px 0; color: #ac3838; font-size: 13px; line-height: 1.6; }
+.chat > .auth-error { padding: 0 28px; }
+.account-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-left: auto; }
+.account-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; color: #638176; font-size: 12px; }
+.switch-account { padding: 7px 10px; background: #f2f5f3; color: #38644f; font-size: 12px; }
+.switch-account:hover:not(:disabled) { background: #e5eee8; }
 
 @media (max-width: 560px) {
   .page { width: calc(100% - 24px); padding-top: 28px; }
@@ -57,4 +70,6 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   .chat-footer { padding: 16px; }
   .message-content { max-width: 82%; }
   .input-hint { flex-wrap: wrap; }
+  .account-controls { max-width: 148px; }
+  .login-card { padding: 24px; }
 }

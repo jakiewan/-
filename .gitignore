@@ -218,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+**.history
+**.txt
+**.md
+**.
+**.DS_Store
+.gitignore
+.vscode/changelists.json
+/.env.example

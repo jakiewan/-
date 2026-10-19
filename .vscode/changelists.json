@@ -3,10 +3,20 @@
     {
       "name": "Default",
       "files": [
-        "\"\\346\\212\\200\\346\\234\\257\\346\\226\\271\\346\\241\\210.md\"",
-        "\".history/\\346\\212\\200\\346\\234\\257\\346\\226\\271\\346\\241\\210_20261019212927.md\"",
-        "\".history/\\346\\212\\200\\346\\234\\257\\346\\226\\271\\346\\241\\210_20261019212941.md\"",
-        ".vscode/changelists.json"
+        ".DS_Store",
+        "backend/main.py",
+        "backend/requirements.txt",
+        "frontend/README.md",
+        "frontend/playwright.config.js",
+        "frontend/tests/chat.spec.js",
+        "backend/minimax_client.py",
+        ".vscode/changelists.json",
+        "AGENTS.md",
+        "frontend/src/App.vue",
+        "frontend/src/style.css",
+        "backend/auth.py",
+        "frontend/src/LoginForm.vue",
+        ".gitignore"
       ]
     }
   ],
