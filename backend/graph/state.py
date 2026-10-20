@@ -9,6 +9,7 @@ class CustomerServiceState(AgentState):
     intent: Intent
     intent_reason: str
     intent_confidence: float
+    intent_context_used: bool
     context: str
     requires_tools: bool
     tool_rounds: int

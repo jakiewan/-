@@ -4,11 +4,12 @@ from langchain.agents.middleware import before_agent
 from langgraph.config import get_stream_writer
 
 from .intent_classifier import BertIntentClassifier, get_intent_classifier
+from .intent_input import previous_exchange
 from .state import CustomerServiceState
 
 
 async def recognize_intent(state: CustomerServiceState, *, classifier: BertIntentClassifier | None = None) -> dict:
-    """使用微调 BERT 分类本轮用户消息，不调用生成模型。"""
+    """使用微调 BERT 分类本轮诉求，按模型配置参考上一轮完整问答。"""
     messages = [
         message
         for message in state["messages"]
@@ -16,8 +17,9 @@ async def recognize_intent(state: CustomerServiceState, *, classifier: BertInten
     ]
     if not messages or messages[-1].type != "human":
         raise ValueError("意图分类需要最后一条消息为用户消息")
-    # shortcut: 当前仅分类本轮文本，省略句的上下文识别需补充真实多轮语料后单独实现。
-    result = await asyncio.to_thread((classifier or get_intent_classifier()).predict, messages[-1].text)
+    result = await asyncio.to_thread(
+        (classifier or get_intent_classifier()).predict, messages[-1].text, previous_exchange(messages),
+    )
     return {**result, "tool_rounds": 0}
 
 
@@ -30,6 +32,7 @@ def create_intent_middleware():
         get_stream_writer()({
             "intent": result["intent"], "reason": result["intent_reason"],
             "confidence": result["intent_confidence"],
+            "context_used": result["intent_context_used"],
         })
         return result
 
