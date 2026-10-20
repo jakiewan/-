@@ -8,16 +8,16 @@ from .state import CustomerServiceState
 
 
 async def recognize_intent(state: CustomerServiceState, *, classifier: BertIntentClassifier | None = None) -> dict:
-    """使用微调 BERT 结合近期对话分类，不调用生成模型。"""
+    """使用微调 BERT 分类本轮用户消息，不调用生成模型。"""
     messages = [
         message
         for message in state["messages"]
         if message.type in ("human", "ai") and message.text
-    ][-12:]
+    ]
     if not messages or messages[-1].type != "human":
         raise ValueError("意图分类需要最后一条消息为用户消息")
-    history = "\n".join(f"{'用户' if message.type == 'human' else '助手'}：{message.text}" for message in messages[:-1])
-    result = await asyncio.to_thread((classifier or get_intent_classifier()).predict, messages[-1].text, history)
+    # shortcut: 当前仅分类本轮文本，省略句的上下文识别需补充真实多轮语料后单独实现。
+    result = await asyncio.to_thread((classifier or get_intent_classifier()).predict, messages[-1].text)
     return {**result, "tool_rounds": 0}
 
 

@@ -14,7 +14,7 @@ from ..graph.nodes import create_intent_middleware
 from ..memory.context import UserContext
 from ..memory.prompts import user_memory_prompt
 from ..tools.memory import forget_user_info, remember_user_info
-from ..tools.weather import get_weather
+from ..tools.weather import get_weather, repair_weather_call
 
 
 class MiniMaxClient:
@@ -45,7 +45,7 @@ class MiniMaxClient:
             store=store,
             context_schema=UserContext,
             tools=[remember_user_info, forget_user_info, get_weather],
-            middleware=[intent_middleware, user_memory_prompt],
+            middleware=[intent_middleware, user_memory_prompt, repair_weather_call],
         )
 
     async def chat(self, message: str, thread_id: str, user_id: str) -> str:
@@ -64,6 +64,8 @@ class MiniMaxClient:
         config = {"configurable": {"thread_id": thread_id}}
         has_text = False
         node_starts = {}
+        deferred_text = ""
+        defer_model_text = True
         async with aclosing(self.agent.astream(
             {"messages": [{"role": "user", "content": message}]},
             config,
@@ -74,8 +76,23 @@ class MiniMaxClient:
                 if mode == "messages":
                     chunk, metadata = data
                     if metadata.get("langgraph_node") == "model" and chunk.type == "AIMessageChunk" and chunk.text:
+                        if defer_model_text:
+                            deferred_text += chunk.text
+                            prefix = deferred_text.lstrip()
+                            # 调用代码暂缓显示，节点结束后使用协议检查通过的最终消息。
+                            if (
+                                "```".startswith(prefix) or prefix.startswith("```")
+                                or "functions.get_weather".startswith(prefix)
+                                or prefix.startswith("functions.get_weather")
+                            ):
+                                continue
+                            defer_model_text = False
+                            text = deferred_text
+                            deferred_text = ""
+                        else:
+                            text = chunk.text
                         has_text = True
-                        yield "delta", {"text": chunk.text}
+                        yield "delta", {"text": text}
                 elif mode == "custom":
                     yield "intent", data
                 elif mode == "tasks":
@@ -85,6 +102,9 @@ class MiniMaxClient:
                     }
                     if "input" in data:
                         node_starts[data["id"]] = perf_counter()
+                        if data["name"] == "model":
+                            deferred_text = ""
+                            defer_model_text = True
                         if data["name"] == "tools":
                             node["tools"] = [call["name"] for call in data["input"]]
                         yield "node", {**node, "status": "running"}
@@ -95,6 +115,11 @@ class MiniMaxClient:
                                     "status": "running", "label": "执行工具：" + call["name"],
                                 }
                     else:
+                        if data["name"] == "model" and defer_model_text and not data["error"]:
+                            for message in data["result"].get("messages", []):
+                                if message.type == "ai" and message.text and not message.tool_calls:
+                                    has_text = True
+                                    yield "delta", {"text": message.text}
                         yield "node", {
                             **node, "status": "error" if data["error"] else "done",
                             "elapsed_ms": round((perf_counter() - node_starts.pop(data["id"])) * 1000),

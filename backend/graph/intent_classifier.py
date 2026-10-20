@@ -11,7 +11,7 @@ from .state import Intent
 
 INTENTS = get_args(Intent)
 MAX_LENGTH = 128
-MODEL_PATH = PROJECT_ROOT / "checkpoint" / "intent_classify" / "best_model"
+MODEL_PATH = PROJECT_ROOT / "checkpoint" / "intent_classify" / "bert_v2"
 
 
 class BertIntentClassifier:

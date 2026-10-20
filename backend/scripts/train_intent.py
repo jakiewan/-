@@ -13,22 +13,25 @@ from ..common.constants import PROJECT_ROOT
 from ..graph.intent_classifier import INTENTS, MAX_LENGTH, MODEL_PATH
 
 
-def load_data(path: Path) -> tuple[list[dict], list[dict]]:
+def load_data(path: Path) -> tuple[list[dict], list[dict], list[dict]]:
     with path.open(encoding="utf-8-sig", newline="") as stream:
         rows = list(csv.DictReader(stream))
     seen = set()
     for row in rows:
-        if not row["text"].strip() or row["intent"] not in INTENTS or row["split"] not in ("train", "validation"):
-            raise ValueError("CSV 需要非空 text、六类 intent 和 train/validation split")
+        if not row["text"].strip() or row["intent"] not in INTENTS or row["split"] not in ("train", "validation", "test"):
+            raise ValueError("CSV 需要非空 text、六类 intent 和 train/validation/test split")
         key = (row["text"].strip(), row.get("history", "").strip())
         if key in seen:
             raise ValueError(f"存在重复样本或训练/验证数据重叠：{key[0]}")
         seen.add(key)
     train = [row for row in rows if row["split"] == "train"]
     validation = [row for row in rows if row["split"] == "validation"]
+    test = [row for row in rows if row["split"] == "test"]
     if any({row["intent"] for row in split} != set(INTENTS) for split in (train, validation)):
         raise ValueError("训练集和验证集都必须覆盖六类意图")
-    return train, validation
+    if test and {row["intent"] for row in test} != set(INTENTS):
+        raise ValueError("独立测试集必须覆盖六类意图")
+    return train, validation, test
 
 
 def encode(rows: list[dict], tokenizer: BertTokenizer) -> TensorDataset:
@@ -70,7 +73,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-model", type=Path, required=True, help="本地 bert-base-chinese 预训练目录")
     # shortcut: 默认使用人工演示样本，真实客服分流前需更换标注数据并独立评估。
-    parser.add_argument("--data", type=Path, default=PROJECT_ROOT / "backend/data/intent_demo.csv")
+    parser.add_argument("--data", type=Path, default=PROJECT_ROOT / "backend/data/intent_v2.csv")
     parser.add_argument("--output", type=Path, default=MODEL_PATH)
     parser.add_argument("--epochs", type=int, default=8)
     args = parser.parse_args()
@@ -78,7 +81,7 @@ def main():
         parser.error("需要有效的本地底座目录，epochs 必须大于 0")
     if args.output.exists() and any(args.output.iterdir()):
         parser.error("输出目录非空，请指定新的 --output，避免覆盖已有模型")
-    train, validation = load_data(args.data)
+    train, validation, test = load_data(args.data)
     set_seed(42)
     tokenizer = BertTokenizer.from_pretrained(args.base_model, local_files_only=True)
     model = BertForSequenceClassification.from_pretrained(
@@ -119,6 +122,16 @@ def main():
             }
             (args.output / "evaluation.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     print(f"已保存验证集 macro_f1 最优模型：{args.output}", flush=True)
+    if test:
+        # 测试集只在模型选定后评估，不参与训练或选轮次。
+        best_model = BertForSequenceClassification.from_pretrained(args.output, local_files_only=True).to(device)
+        test_metrics = evaluate(best_model, DataLoader(encode(test, tokenizer), batch_size=16), device)
+        report_path = args.output / "evaluation.json"
+        report = json.loads(report_path.read_text())
+        report.update(test_count=len(test), test_metrics=test_metrics)
+        report["note"] = "人工编写的开发语料；验证集用于选模型，测试集仅在选定后评估，指标不代表真实客服分布。"
+        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        print(f"独立测试 {len(test)} 条 accuracy={test_metrics['accuracy']:.4f} macro_f1={test_metrics['macro_f1']:.4f}", flush=True)
 
 
 if __name__ == "__main__":
