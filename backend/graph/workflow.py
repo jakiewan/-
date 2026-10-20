@@ -1,5 +1,6 @@
-"""客服工作流骨架，尚未接入聊天接口；业务节点待实现。"""
+"""客服工作流骨架；意图识别已实现，其余业务节点待实现。"""
 
+from functools import partial
 from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
@@ -38,9 +39,9 @@ def route_handoff(state: CustomerServiceState) -> Literal["handoff", "__end__"]:
     return END
 
 
-def build_workflow():
+def build_workflow(model=None):
     builder = StateGraph(CustomerServiceState)
-    builder.add_node("recognize_intent", recognize_intent)
+    builder.add_node("recognize_intent", partial(recognize_intent, model=model))
     builder.add_node("retrieve_knowledge", retrieve_knowledge)
     builder.add_node("generate_answer", generate_answer)
     builder.add_node("execute_tools", execute_tools)
