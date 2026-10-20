@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1330" font-family="'JetBrains Mono','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
+  <style>
+    .t{fill:#e2e8f0;font-size:12px;font-weight:600}
+    .ts{fill:#94a3b8;font-size:9px}
+    .tl{fill:#94a3b8;font-size:7.5px}
+    .lbl{font-size:8px;font-weight:600}
+    .note{fill:#64748b;font-size:9px}
+  </style>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="a-slate" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#64748b"/></marker>
+    <marker id="a-violet" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#a78bfa"/></marker>
+    <marker id="a-emerald" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#34d399"/></marker>
+    <marker id="a-rose" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#fb7185"/></marker>
+    <marker id="a-blue" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#60a5fa"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <text x="40" y="42" fill="#f1f5f9" font-size="18" font-weight="700">目标架构 · 电商智能客服 LangGraph 主图</text>
+  <text x="40" y="62" fill="#64748b" font-size="10">在现有 create_agent 之外加一层路由：意图识别提为节点，agent 作为默认路径，统一出口只做脱敏拼装</text>
+
+  <rect x="50" y="90" width="1330" height="1060" rx="14" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="10 5"/>
+  <text x="70" y="112" fill="#fbbf24" font-size="10" font-weight="600">LangGraph 主图</text>
+  <text x="70" y="126" fill="#64748b" font-size="8">backend/graph/workflow.py 重写 · backend/utils/minimax_client.py 改为被本图调用</text>
+
+  <!-- ============ connectors ============ -->
+  <path d="M300,152 L300,170" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a-slate)"/>
+  <path d="M300,220 L300,250" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a-slate)"/>
+  <path d="M300,300 L300,330" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a-slate)"/>
+  <path d="M300,410 L300,412" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#a-violet)"/>
+
+  <!-- fan-out from router -->
+  <path d="M300,528 L300,565" fill="none" stroke="#a78bfa" stroke-width="1.5"/>
+  <path d="M170,565 L800,565" fill="none" stroke="#a78bfa" stroke-width="1.5"/>
+  <path d="M170,565 L170,590" fill="none" stroke="#fb7185" stroke-width="1.5" marker-end="url(#a-rose)"/>
+  <path d="M380,565 L380,590" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <path d="M590,565 L590,590" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <path d="M800,565 L800,590" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#a-blue)"/>
+
+  <!-- merge bus -->
+  <path d="M170,644 L170,700" fill="none" stroke="#fb7185" stroke-width="1.2"/>
+  <path d="M380,644 L380,700" fill="none" stroke="#64748b" stroke-width="1.2"/>
+  <path d="M590,644 L590,700" fill="none" stroke="#64748b" stroke-width="1.2"/>
+  <path d="M800,644 L800,700" fill="none" stroke="#60a5fa" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <path d="M170,700 L800,700" fill="none" stroke="#64748b" stroke-width="1.2"/>
+  <path d="M485,700 L485,800" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#a-emerald)"/>
+
+  <!-- model -> response -->
+  <path d="M620,835 L940,835" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#a-emerald)"/>
+  <path d="M1140,830 L1200,830" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#a-emerald)"/>
+
+  <!-- agent internals -->
+  <path d="M520,870 L520,882" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#a-emerald)"/>
+  <path d="M430,920 L400,920 L400,1000" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#a-emerald)"/>
+  <path d="M610,920 L710,920 L710,1000" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#a-emerald)"/>
+  <path d="M300,1027 L250,1027 L250,835 L420,835" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#a-emerald)"/>
+
+  <!-- ============ chain ============ -->
+  <g><rect x="260" y="130" width="80" height="22" rx="11" fill="#0f172a" stroke="#64748b" stroke-width="1.5"/><text x="300" y="144.5" class="tl" text-anchor="middle">START</text></g>
+  <g><rect x="210" y="170" width="180" height="50" rx="6" fill="#0f172a"/><rect x="210" y="170" width="180" height="50" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/><text x="300" y="190" class="t" text-anchor="middle">FastAPI / SSE</text><text x="300" y="206" class="ts" text-anchor="middle">backend/main.py 不变</text></g>
+  <g><rect x="190" y="250" width="220" height="50" rx="6" fill="#0f172a"/><rect x="190" y="250" width="220" height="50" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="300" y="270" class="t" text-anchor="middle">加载会话状态</text><text x="300" y="286" class="ts" text-anchor="middle">checkpointer 按 thread_id 恢复 · 已存在</text></g>
+  <g><rect x="210" y="330" width="180" height="80" rx="6" fill="#0f172a"/><rect x="210" y="330" width="180" height="80" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="300" y="355" class="t" text-anchor="middle">intent_router</text><text x="300" y="372" class="ts" text-anchor="middle">BERT 六类意图识别</text><text x="300" y="387" class="ts" text-anchor="middle">从 before_agent 中间件提成节点</text><text x="300" y="401" class="ts" fill="#60a5fa">已存在，提为节点</text></g>
+
+  <!-- router diamond -->
+  <g><polygon points="300,412 420,470 300,528 180,470" fill="#0f172a"/><polygon points="300,412 420,470 300,528 180,470" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="300" y="467" class="t" text-anchor="middle">条件路由</text><text x="300" y="481" class="ts" text-anchor="middle">意图 + 置信度 + 会话状态</text></g>
+
+  <!-- fan-out labels -->
+  <text x="170" y="558" class="lbl" fill="#fb7185" text-anchor="middle">转人工</text>
+  <text x="380" y="558" class="lbl" fill="#60a5fa" text-anchor="middle">咨询</text>
+  <text x="590" y="558" class="lbl" fill="#60a5fa" text-anchor="middle">订单查询</text>
+  <text x="800" y="558" class="lbl" fill="#60a5fa" text-anchor="middle">默认路径</text>
+
+  <!-- branch row -->
+  <g><rect x="85" y="590" width="170" height="54" rx="6" fill="#0f172a"/><rect x="85" y="590" width="170" height="54" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/><text x="170" y="612" class="t" text-anchor="middle">handoff_flag</text><text x="170" y="628" class="ts" text-anchor="middle">置 requires_handoff</text></g>
+  <g><rect x="295" y="590" width="170" height="54" rx="6" fill="#0f172a"/><rect x="295" y="590" width="170" height="54" rx="6" fill="rgba(30,41,59,0.5)" stroke="#64748b" stroke-width="1.5" stroke-dasharray="6 4"/><text x="380" y="612" class="t" text-anchor="middle">retrieval</text><text x="380" y="628" class="ts" text-anchor="middle">FAQ / RAG（未接入）</text></g>
+  <g><rect x="505" y="590" width="170" height="54" rx="6" fill="#0f172a"/><rect x="505" y="590" width="170" height="54" rx="6" fill="rgba(30,41,59,0.5)" stroke="#64748b" stroke-width="1.5" stroke-dasharray="6 4"/><text x="590" y="612" class="t" text-anchor="middle">business</text><text x="590" y="628" class="ts" text-anchor="middle">订单 / 售后接口（未接入）</text></g>
+  <g><rect x="715" y="590" width="170" height="54" rx="6" fill="#0f172a"/><rect x="715" y="590" width="170" height="54" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="6 4"/><text x="800" y="612" class="t" text-anchor="middle">直接进 agent</text><text x="800" y="628" class="ts" text-anchor="middle">售后 · 闲聊 · 低置信度</text></g>
+
+  <!-- merge labels -->
+  <text x="176" y="678" class="tl" fill="#fb7185">置标记后进入</text>
+  <text x="386" y="678" class="tl" fill="#64748b">未命中 → agent</text>
+  <text x="596" y="678" class="tl" fill="#64748b">无权限 / 失败 → agent</text>
+  <text x="500" y="716" class="lbl" fill="#94a3b8">四条路径汇入 agent：确定性分支兜不住就交回模型</text>
+
+  <!-- ============ agent subgraph ============ -->
+  <rect x="180" y="760" width="680" height="330" rx="12" fill="none" stroke="#34d399" stroke-width="1" stroke-dasharray="8 4"/>
+  <text x="198" y="782" class="lbl" fill="#34d399">agent 子图（create_agent）· 入口 model</text>
+  <g><rect x="420" y="800" width="200" height="70" rx="6" fill="#0f172a"/><rect x="420" y="800" width="200" height="70" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="520" y="824" class="t" text-anchor="middle">生成回复 model</text><text x="520" y="840" class="ts" text-anchor="middle">已有 model + tools 节点</text><text x="520" y="858" class="ts" fill="#fbbf24">按意图过滤工具白名单</text></g>
+  <g><polygon points="520,882 610,920 520,958 430,920" fill="#0f172a"/><polygon points="520,882 610,920 520,958 430,920" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="520" y="923" class="ts" text-anchor="middle">tool_calls?</text></g>
+  <g><rect x="300" y="1000" width="200" height="54" rx="6" fill="#0f172a"/><rect x="300" y="1000" width="200" height="54" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="400" y="1022" class="t" text-anchor="middle">Tools</text><text x="400" y="1038" class="ts" text-anchor="middle">天气 · 记忆 ×2</text></g>
+  <g><rect x="620" y="1000" width="180" height="54" rx="6" fill="#0f172a"/><rect x="620" y="1000" width="180" height="54" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="710" y="1022" class="t" text-anchor="middle">直接输出</text><text x="710" y="1038" class="ts" text-anchor="middle">无工具轮</text></g>
+  <text x="410" y="913" class="lbl" fill="#34d399">是</text>
+  <text x="618" y="913" class="lbl" fill="#34d399">否</text>
+  <text x="244" y="930" class="lbl" fill="#34d399" text-anchor="end">循环调用</text>
+
+  <!-- ============ output ============ -->
+  <g><rect x="940" y="800" width="200" height="60" rx="6" fill="#0f172a"/><rect x="940" y="800" width="200" height="60" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/><text x="1040" y="822" class="t" text-anchor="middle">response 统一出口</text><text x="1040" y="838" class="ts" text-anchor="middle">脱敏 · 拼装 · 事实校验</text><text x="1040" y="852" class="ts" fill="#fbbf24">不做 LLM 调用</text></g>
+  <g><circle cx="1230" cy="830" r="12" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/><circle cx="1230" cy="830" r="6" fill="#34d399"/><text x="1230" y="854" class="tl" text-anchor="middle">END</text></g>
+
+  <!-- ============ notes ============ -->
+  <g>
+    <text x="70" y="1190" class="note">改动范围：workflow.py 重写为上图拓扑 · nodes.py 删 create_intent_middleware 与四个占位节点 · state.py 加 intent_low_confidence</text>
+    <text x="70" y="1210" class="note">SSE：内层 model / tools 的 tasks 事件用 get_stream_writer 转发，node_labels 改用外层节点名，前端轨迹不再只有「Agent」一行</text>
+    <text x="70" y="1230" class="note">上下文不建节点，由 checkpointer 按 thread_id 恢复；低置信度不做二次 LLM 分类，直接进 agent，提示词告知「以当前诉求为准」</text>
+    <text x="70" y="1250" class="note">retrieval / business 命中后可短路直接到 response（接入后加边）；写操作闸门 wrap_tool_call 等第一个业务工具接入时再加</text>
+  </g>
+
+  <!-- legend -->
+  <g>
+    <text x="70" y="1290" class="lbl" fill="#64748b">图例</text>
+    <rect x="110" y="1282" width="14" height="10" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399"/><text x="130" y="1291" class="ts" fill="#e2e8f0">已存在</text>
+    <rect x="185" y="1282" width="14" height="10" rx="2" fill="rgba(59,130,246,0.3)" stroke="#60a5fa"/><text x="205" y="1291" class="ts" fill="#e2e8f0">本次新增</text>
+    <rect x="275" y="1282" width="14" height="10" rx="2" fill="rgba(30,41,59,0.5)" stroke="#64748b" stroke-dasharray="3 2"/><text x="295" y="1291" class="ts" fill="#e2e8f0">未接入（占位）</text>
+    <rect x="390" y="1282" width="14" height="10" rx="2" fill="rgba(136,19,55,0.4)" stroke="#fb7185"/><text x="410" y="1291" class="ts" fill="#e2e8f0">转人工</text>
+    <line x1="475" y1="1287" x2="500" y2="1287" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="5 3"/><text x="506" y="1291" class="ts" fill="#e2e8f0">直接进 agent</text>
+    <line x1="590" y1="1287" x2="615" y2="1287" stroke="#64748b" stroke-width="1.2"/><text x="621" y="1291" class="ts" fill="#e2e8f0">回边（未命中 / 无权限 / 失败）</text>
+  </g>
+</svg>

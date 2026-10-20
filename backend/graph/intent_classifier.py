@@ -42,7 +42,7 @@ class BertIntentClassifier:
             label_id = probabilities.argmax().item()
             confidence = probabilities[label_id].item()
         intent = self.model.config.id2label[label_id]
-        reason = f"BERT 分类：{intent}，置信度 {confidence:.1%}"
+        reason = f"BERT 分类：{intent}，置信度 {confidence:.4f}"
         context_used = bool(self.context_turns and (inputs["token_type_ids"][0] == 1).sum().item() > 1)
         if context_used:
             reason += "；参考上一轮问答"
