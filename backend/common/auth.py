@@ -2,17 +2,16 @@ import json
 import os
 import secrets
 import time
-from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+from .constants import COOKIE_NAME, PROJECT_ROOT, SESSION_TTL
+
+load_dotenv(PROJECT_ROOT / ".env")
 
 router = APIRouter(prefix="/api/auth")
-COOKIE_NAME = "customer_session"
-SESSION_TTL = 8 * 60 * 60
 # shortcut: 会话保存在单进程内存中，多进程部署或需要重启后保留登录时改用共享存储。
 sessions: dict[str, tuple[str, float]] = {}
 

@@ -83,12 +83,43 @@ curl -b /tmp/customer-chat-cookies http://127.0.0.1:5173/api/chat \
 
 页面和发送逻辑位于 `src/App.vue`，样式位于 `src/style.css`，接口位于 `../backend/main.py`。
 
-`../backend/minimax_client.py` 封装模型和 Agent，使用 `AsyncPostgresSaver` 将线程状态持久化到 PostgreSQL。后端启动时创建连接池、初始化检查点表并创建 Agent，关闭时释放连接；本项目使用独立的 `customer_chat` schema，不使用已有的 `public` 检查点表。
+后端目录按职责组织：
+
+```text
+backend/
+├── main.py                  # FastAPI 入口、生命周期与聊天接口
+├── common/
+│   ├── auth.py              # 登录与鉴权
+│   └── constants.py         # 项目路径、Cookie 与登录会话常量
+├── memory/
+│   ├── context.py           # 用户运行上下文与记忆命名空间
+│   └── prompts.py           # 读取长期档案的动态提示
+├── tools/
+│   └── memory.py            # Agent 可调用的记忆读写工具
+├── graph/
+│   ├── state.py             # 图状态定义
+│   ├── nodes.py             # 六个业务节点占位函数
+│   ├── workflow.py          # 路由、节点注册和图编译
+│   └── workflow.md          # 中文流程图
+├── rag/                     # 知识检索与向量数据库集成，待实现
+└── utils/
+    └── minimax_client.py    # MiniMax 工具类与 Agent 创建
+```
+
+在项目根目录运行 `python3 -m backend.graph.workflow` 可查看图骨架的 Mermaid 拓扑。
+
+`../backend/utils/minimax_client.py` 封装模型和 Agent，使用 `AsyncPostgresSaver` 将线程状态持久化到 PostgreSQL。后端启动时创建连接池、初始化检查点表并创建 Agent，关闭时释放连接；本项目使用独立的 `customer_chat` schema，不使用已有的 `public` 检查点表。
 
 每个账号固定一个对话：后端从登录态读取当前账号名作为 `user_id`，生成 `thread_id = "chat:" + user_id`，不接受前端指定的用户或线程 ID。前端继续只提交 `message`，历史由 Saver 自动恢复与保存；同一线程的请求通过 PostgreSQL advisory transaction lock 串行执行。当前账号名是记忆的归属标识，修改或将账号名分配给其他人会影响对应记忆的归属。
 
 退出、切换账号和后端重启不会删除数据库中的对话记忆；重启后仍需重新登录同一个账号才能继续。刷新页面会清空界面显示，后端记忆保留，当前未提供历史展示或清空记忆接口。
 
-检查点由框架按执行步骤保存，上游请求失败也可能保留输入或中间状态。当前保留完整对话状态，尚未加入长对话摘要、上下文 Token 裁剪、长期记忆或数据保留策略。
+检查点由框架按执行步骤保存，上游请求失败也可能保留输入或中间状态。当前保留完整对话状态，尚未加入长对话摘要、上下文 Token 裁剪或数据保留策略。
+
+长期记忆使用 `AsyncPostgresStore`，复用现有连接池并在 `customer_chat` schema 下初始化框架存储表。命名空间为 `("user_memories",)`，key 为后端认证的账号标识，value 是用户档案 JSON；只支持 `name`（姓名）、`language`（语言）和 `response_style`（回答偏好）。
+
+例如发送“请长期记住，我叫万佳恒，回答简短一点”，Agent 会调用工具保存；“把我的名字改为张三”可更正，“删除长期档案中的姓名”可删除对应字段。只有用户明确要求保存、更正或删除时才写入；每次模型调用前通过动态提示中间件读取档案。用户标识由服务端传入运行上下文，不由模型或前端指定。
+
+长期档案与线程检查点独立，因此可以在新的线程中读取同一用户的档案，不需要增加新建会话页面。删除档案字段不会删除短期记忆中的原始消息，彻底清除聊天数据需要单独清理检查点。本轮未加入向量检索、自动提取、历史列表或新建会话功能。
 
 接口参考：[MiniMax OpenAI 兼容接口](https://platform.minimax.cn/docs/api-reference/text-openai-api)、[LangChain Agent](https://docs.langchain.com/oss/python/langchain/agents)。

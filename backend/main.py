@@ -7,13 +7,14 @@ import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.store.postgres.aio import AsyncPostgresStore
 from openai import APIError
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, Field
 
-from .minimax_client import MiniMaxClient
-from .auth import current_user, router as auth_router
+from .utils.minimax_client import MiniMaxClient
+from .common.auth import current_user, router as auth_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,7 +33,7 @@ async def lifespan(app: FastAPI):
             "connect_timeout": 5,
             "options": "-c search_path=customer_chat",
         },
-    ) as pool:
+    ) as pool, AsyncPostgresStore(pool) as store:
         await pool.wait(timeout=10)
         checkpointer = AsyncPostgresSaver(
             pool, serde=JsonPlusSerializer(allowed_msgpack_modules=None)
@@ -42,12 +43,13 @@ async def lifespan(app: FastAPI):
             try:
                 await conn.execute("CREATE SCHEMA IF NOT EXISTS customer_chat")
                 await checkpointer.setup()
+                await store.setup()
             finally:
                 await conn.execute("SELECT pg_advisory_unlock(hashtextextended('customer_chat:setup', 0))")
         app.state.db_pool = pool
-        # 请求锁最多占四个连接，留一个给 Saver，避免耗尽连接池。
+        # 请求锁最多占四个连接，留一个给 Saver/Store，避免耗尽连接池。
         app.state.chat_slots = asyncio.Semaphore(4)
-        app.state.minimax = MiniMaxClient(checkpointer)
+        app.state.minimax = MiniMaxClient(checkpointer, store)
         yield
 
 
@@ -70,7 +72,7 @@ async def chat(request: ChatRequest, http_request: Request, user_id: str = Depen
                     await conn.execute(
                         "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (thread_id,)
                     )
-                    return {"reply": await http_request.app.state.minimax.chat(request.message, thread_id)}
+                    return {"reply": await http_request.app.state.minimax.chat(request.message, thread_id, user_id)}
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except APIError as exc:
