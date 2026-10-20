@@ -232,3 +232,4 @@ __marimo__/
 /.vscode/
 /checkpoint/
 !/backend/graph/intent.md
+!/Graph骨架技术方案.md

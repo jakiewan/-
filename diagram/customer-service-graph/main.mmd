@@ -1,0 +1,56 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	prepare_context(prepare_context)
+	recognize_intent(recognize_intent)
+	fallback_intent(fallback_intent)
+	select_business_route(select_business_route)
+	handle_chitchat(handle_chitchat)
+	retrieve_knowledge(retrieve_knowledge)
+	query_order(query_order)
+	handle_after_sales(handle_after_sales)
+	handle_complaint(handle_complaint)
+	complex_agent(complex_agent)
+	aggregate_results(aggregate_results)
+	check_handoff(check_handoff)
+	handoff(handoff)
+	generate_answer(generate_answer)
+	validate_answer(validate_answer)
+	safe_fallback(safe_fallback)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> prepare_context;
+	aggregate_results --> check_handoff;
+	check_handoff -.-> generate_answer;
+	check_handoff -.-> handoff;
+	complex_agent --> aggregate_results;
+	fallback_intent -.-> generate_answer;
+	fallback_intent -.-> handoff;
+	fallback_intent -.-> select_business_route;
+	generate_answer --> validate_answer;
+	handle_after_sales --> aggregate_results;
+	handle_chitchat --> aggregate_results;
+	handle_complaint --> aggregate_results;
+	handoff --> generate_answer;
+	prepare_context --> recognize_intent;
+	query_order --> aggregate_results;
+	recognize_intent -.-> fallback_intent;
+	recognize_intent -.-> handoff;
+	recognize_intent -.-> select_business_route;
+	retrieve_knowledge --> aggregate_results;
+	select_business_route -.-> complex_agent;
+	select_business_route -.-> generate_answer;
+	select_business_route -.-> handle_after_sales;
+	select_business_route -.-> handle_chitchat;
+	select_business_route -.-> handle_complaint;
+	select_business_route -.-> query_order;
+	select_business_route -.-> retrieve_knowledge;
+	validate_answer -.-> __end__;
+	validate_answer -.-> safe_fallback;
+	safe_fallback --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

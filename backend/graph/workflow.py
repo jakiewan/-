@@ -1,94 +1,137 @@
-"""客服工作流骨架；意图识别已实现，其余业务节点待实现。"""
+"""独立的客服主图与复杂问题子图骨架；尚未接入聊天 API，业务节点明确报待实现。"""
 
 from functools import partial
 from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
 
-from .nodes import (
-    check_handoff,
-    execute_tools,
-    generate_answer,
-    handoff,
-    recognize_intent,
-    retrieve_knowledge,
-)
-from .state import CustomerServiceState
+from . import nodes
+from .state import BusinessRoute, CustomerServiceState
 
+# 初始阈值尚待业务样本验证，不表示 BERT 分数已经校准。
+INTENT_CONFIDENCE_THRESHOLD = 0.85
 MAX_TOOL_ROUNDS = 5
 
 
-def route_intent(state: CustomerServiceState) -> Literal["retrieve_knowledge", "generate_answer", "check_handoff"]:
-    if state["intent"] == "闲聊":
+def route_intent(state: CustomerServiceState) -> Literal["fallback_intent", "handoff", "select_business_route"]:
+    if state["intent_confidence"] < INTENT_CONFIDENCE_THRESHOLD:
+        return "fallback_intent"
+    if state["intent"] == "转人工":
+        return "handoff"
+    return "select_business_route"
+
+
+def route_fallback(state: CustomerServiceState) -> Literal["generate_answer", "handoff", "select_business_route"]:
+    if state["needs_clarification"]:
         return "generate_answer"
     if state["intent"] == "转人工":
-        return "check_handoff"
-    return "retrieve_knowledge"
-
-
-def route_answer(state: CustomerServiceState) -> Literal["execute_tools", "check_handoff"]:
-    if state["requires_tools"] and state["tool_rounds"] < MAX_TOOL_ROUNDS:
-        return "execute_tools"
-    return "check_handoff"
-
-
-def route_handoff(state: CustomerServiceState) -> Literal["handoff", "__end__"]:
-    exhausted = state.get("requires_tools", False) and state["tool_rounds"] >= MAX_TOOL_ROUNDS
-    if state["requires_handoff"] or exhausted:
         return "handoff"
-    return END
+    return "select_business_route"
+
+
+def route_business(state: CustomerServiceState) -> BusinessRoute | Literal["generate_answer"]:
+    if state["needs_clarification"]:
+        return "generate_answer"
+    return state["business_route"]
+
+
+def route_agent(state: CustomerServiceState) -> Literal["execute_tools", "mark_tool_limit", "collect_agent_result"]:
+    if state["needs_clarification"] or not state["requires_tools"]:
+        return "collect_agent_result"
+    if state["tool_rounds"] >= MAX_TOOL_ROUNDS:
+        return "mark_tool_limit"
+    return "execute_tools"
+
+
+def route_handoff(state: CustomerServiceState) -> Literal["handoff", "generate_answer"]:
+    return "handoff" if state["requires_handoff"] else "generate_answer"
+
+
+def route_validation(state: CustomerServiceState) -> Literal["__end__", "safe_fallback"]:
+    return END if state["answer_valid"] else "safe_fallback"
+
+
+def build_complex_agent():
+    """查询工具循环只返回结构化结果；不配置独立检查点，不生成最终客服回复。"""
+    builder = StateGraph(CustomerServiceState)
+    builder.add_node("agent_decide", nodes.agent_decide)
+    builder.add_node("execute_tools", nodes.execute_tools)
+    builder.add_node("mark_tool_limit", nodes.mark_tool_limit)
+    builder.add_node("collect_agent_result", nodes.collect_agent_result)
+
+    builder.add_edge(START, "agent_decide")
+    builder.add_conditional_edges("agent_decide", route_agent, {
+        "execute_tools": "execute_tools",
+        "mark_tool_limit": "mark_tool_limit",
+        "collect_agent_result": "collect_agent_result",
+    })
+    builder.add_edge("execute_tools", "agent_decide")
+    builder.add_edge("mark_tool_limit", "collect_agent_result")
+    builder.add_edge("collect_agent_result", END)
+    return builder.compile()
 
 
 def build_workflow(classifier=None):
-    # 定义节点间共享的状态结构，包含消息、意图、工具轮次和转人工标记。
+    """只编译骨架；不替换现有 create_agent，不连接模型、业务接口或会话存储。"""
     builder = StateGraph(CustomerServiceState)
+    builder.add_node("prepare_context", nodes.prepare_context)
+    builder.add_node("recognize_intent", partial(nodes.recognize_intent, classifier=classifier))
+    builder.add_node("fallback_intent", nodes.fallback_intent)
+    builder.add_node("select_business_route", nodes.select_business_route)
+    builder.add_node("handle_chitchat", nodes.handle_chitchat)
+    builder.add_node("retrieve_knowledge", nodes.retrieve_knowledge)
+    builder.add_node("query_order", nodes.query_order)
+    builder.add_node("handle_after_sales", nodes.handle_after_sales)
+    builder.add_node("handle_complaint", nodes.handle_complaint)
+    builder.add_node("complex_agent", build_complex_agent())
+    builder.add_node("aggregate_results", nodes.aggregate_results)
+    builder.add_node("check_handoff", nodes.check_handoff)
+    builder.add_node("handoff", nodes.handoff)
+    builder.add_node("generate_answer", nodes.generate_answer)
+    builder.add_node("validate_answer", nodes.validate_answer)
+    builder.add_node("safe_fallback", nodes.safe_fallback)
 
-    # 意图识别：使用本地微调 BERT；partial 预先绑定分类器，执行时由图传入 state。
-    builder.add_node("recognize_intent", partial(recognize_intent, classifier=classifier))
-    # 知识检索：查询商品知识、售后政策等，将结果写入 context（待实现）。
-    builder.add_node("retrieve_knowledge", retrieve_knowledge)
-    # 生成回答：结合上下文生成消息，并判断是否需要调用工具（待实现）。
-    builder.add_node("generate_answer", generate_answer)
-    # 工具执行：执行模型请求的工具，追加结果并增加工具调用轮次（待实现）。
-    builder.add_node("execute_tools", execute_tools)
-    # 转人工检查：判断本轮是否需要人工处理，更新转人工标记（待实现）。
-    builder.add_node("check_handoff", check_handoff)
-    # 转人工：对接人工客服服务并记录真实转接结果（待实现）。
-    builder.add_node("handoff", handoff)
-
-    # 入口边：START 是图的虚拟入口，每轮先执行意图识别。
-    builder.add_edge(START, "recognize_intent")
-    # 条件边：route_intent 返回哪个节点名称，本轮就进入哪个分支。
+    builder.add_edge(START, "prepare_context")
+    builder.add_edge("prepare_context", "recognize_intent")
     builder.add_conditional_edges("recognize_intent", route_intent, {
-        # 当前骨架将咨询、投诉、售后和订单查询都送入检索，业务分流尚待细化。
-        "retrieve_knowledge": "retrieve_knowledge",
-        # 闲聊跳过检索，直接生成回答。
+        "fallback_intent": "fallback_intent",
+        "handoff": "handoff",
+        "select_business_route": "select_business_route",
+    })
+    builder.add_conditional_edges("fallback_intent", route_fallback, {
         "generate_answer": "generate_answer",
-        # 用户明确要求转人工时，直接进入转人工检查。
-        "check_handoff": "check_handoff",
+        "handoff": "handoff",
+        "select_business_route": "select_business_route",
     })
-    # 普通边：检索完成后，使用检索结果生成回答。
-    builder.add_edge("retrieve_knowledge", "generate_answer")
-    # 条件边：根据模型是否需要工具，以及本轮已执行的工具轮次分流。
-    builder.add_conditional_edges("generate_answer", route_answer, {
-        # 需要工具且不足 5 轮时，进入工具执行。
-        "execute_tools": "execute_tools",
-        # 不需要工具或已达到轮次上限时，进入转人工检查。
-        "check_handoff": "check_handoff",
+    builder.add_conditional_edges("select_business_route", route_business, {
+        "handle_chitchat": "handle_chitchat",
+        "retrieve_knowledge": "retrieve_knowledge",
+        "query_order": "query_order",
+        "handle_after_sales": "handle_after_sales",
+        "handle_complaint": "handle_complaint",
+        "complex_agent": "complex_agent",
+        "generate_answer": "generate_answer",
     })
-    # 循环回边：工具结果交回模型，生成最终回答或决定下一轮工具调用。
-    builder.add_edge("execute_tools", "generate_answer")
-    # 条件边：需要人工，或仍需工具但已用满 5 轮时转人工，否则结束本轮。
+    for branch in (
+        "handle_chitchat", "retrieve_knowledge", "query_order",
+        "handle_after_sales", "handle_complaint", "complex_agent",
+    ):
+        builder.add_edge(branch, "aggregate_results")
+    builder.add_edge("aggregate_results", "check_handoff")
     builder.add_conditional_edges("check_handoff", route_handoff, {
         "handoff": "handoff",
-        # END 是图的虚拟终点，表示本轮图执行结束。
-        END: END,
+        "generate_answer": "generate_answer",
     })
-    # 转人工节点完成后，结束本轮图执行。
-    builder.add_edge("handoff", END)
-    # 将节点、普通边和条件边编译为可调用的图；此处未配置检查点存储。
+    builder.add_edge("handoff", "generate_answer")
+    builder.add_edge("generate_answer", "validate_answer")
+    builder.add_conditional_edges("validate_answer", route_validation, {
+        END: END,
+        "safe_fallback": "safe_fallback",
+    })
+    builder.add_edge("safe_fallback", END)
     return builder.compile()
 
 
 if __name__ == "__main__":
     print(build_workflow().get_graph().draw_mermaid())
+    print(build_complex_agent().get_graph().draw_mermaid())
