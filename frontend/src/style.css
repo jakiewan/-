@@ -61,6 +61,23 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .account-name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; color: #638176; font-size: 12px; }
 .switch-account { padding: 7px 10px; background: #f2f5f3; color: #38644f; font-size: 12px; }
 .switch-account:hover:not(:disabled) { background: #e5eee8; }
+.intent-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 12px 16px; border-bottom: 1px solid #edf1ee; color: #638176; font-size: 12px; }
+.intent-examples button { padding: 5px 9px; background: #eaf2ed; color: #38644f; font-size: 12px; }
+.intent-examples button:hover:not(:disabled) { background: #dbe9e0; }
+.stream-progress { margin-bottom: 10px; padding: 10px 12px; border: 1px solid #e0e8e2; border-radius: 10px; font-size: 12px; }
+.stream-progress ol { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0; list-style: none; color: #8b978f; }
+.stream-progress .running { color: #36745c; font-weight: 600; }
+.stream-progress .done { color: #638176; }
+.stream-progress .error { color: #ac3838; }
+.node-trace { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #e0e8e2; }
+.node-trace > strong { display: block; margin-bottom: 8px; }
+.node-trace ol { flex-direction: column; }
+.node-trace li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.node-trace code { overflow-wrap: anywhere; }
+.intent-result { display: grid; gap: 5px; margin: 0 0 10px; overflow-wrap: anywhere; }
+.intent-result span, .stream-timing { color: #7b8982; line-height: 1.6; }
+.stream-timing { margin: 8px 0 0; font-size: 11px; }
+.stream-cursor { color: #36745c; }
 
 @media (max-width: 560px) {
   .page { width: calc(100% - 24px); padding-top: 28px; }

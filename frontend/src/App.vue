@@ -9,8 +9,16 @@ const authError = ref('')
 const question = ref('')
 const sending = ref(false)
 const conversation = ref(null)
+const intentExamples = [
+  ['咨询', '这款笔记本支持外接 4K 显示器吗？'],
+  ['投诉', '我要投诉，客服一直没有处理我的问题'],
+  ['售后', '我买的耳机有故障，想申请换货'],
+  ['订单查询', '帮我查询订单 123 的物流状态'],
+  ['转人工', '请帮我转人工客服'],
+  ['闲聊', '你好，今天过得怎么样？'],
+]
 const messages = ref([
-  { role: 'assistant', text: '你好，欢迎来到服务中心 👋\n请问有什么可以帮你？你可以在下方输入问题。' },
+  { role: 'assistant', text: '你好，欢迎使用电商智能客服 👋\n关于手机、电脑、数码配件的选购、使用和售后问题，都可以在这里咨询。' },
 ])
 
 function changeUser(value) {
@@ -52,14 +60,17 @@ async function sendMessage() {
 
   sending.value = true
   messages.value.push({ role: 'user', text })
+  const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], pending: true }) - 1
+  const reply = messages.value[replyIndex]
+  const startedAt = performance.now()
   question.value = ''
   await nextTick()
   conversation.value.scrollTop = conversation.value.scrollHeight
 
   try {
-    const response = await fetch('/api/chat', {
+    const response = await fetch('/api/chat/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify({ message: text }),
     })
     if (response.status === 401) {
@@ -68,11 +79,60 @@ async function sendMessage() {
       return
     }
     if (!response.ok) throw new Error(`请求失败：${response.status}`)
-    const data = await response.json()
-    messages.value.push({ role: 'assistant', text: data.reply })
-  } catch {
-    messages.value.push({ role: 'assistant', text: '暂时无法获取回复，请确认后端服务已启动后重试。' })
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let completed = false
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, '\n')
+        let boundary
+        while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, boundary)
+          buffer = buffer.slice(boundary + 2)
+          const lines = frame.split('\n')
+          const name = lines.find(line => line.startsWith('event:'))?.slice(6).trim()
+          const raw = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')
+          if (!raw) continue
+          const data = JSON.parse(raw)
+          if (name === 'intent') reply.intent = data
+          if (name === 'node') {
+            const node = reply.nodes.find(item => item.id === data.id)
+            if (node) Object.assign(node, data)
+            else reply.nodes.push(data)
+          }
+          if (name === 'progress') {
+            const step = reply.steps.find(item => item.step === data.step)
+            if (step) Object.assign(step, data)
+            else reply.steps.push(data)
+          }
+          if (name === 'delta' && data.text) {
+            reply.firstTokenMs ??= Math.round(performance.now() - startedAt)
+            reply.text += data.text
+          }
+          if (name === 'error') throw new Error(data.message)
+          if (name === 'done') {
+            completed = true
+            reply.elapsedMs = Math.round(performance.now() - startedAt)
+          }
+        }
+        await nextTick()
+        if (conversation.value) conversation.value.scrollTop = conversation.value.scrollHeight
+        if (done) break
+      }
+      if (!completed) throw new Error('连接中断，回复可能不完整，请重试。')
+    } finally {
+      await reader.cancel().catch(() => {})
+      reader.releaseLock()
+    }
+  } catch (error) {
+    reply.error = `暂时无法获取回复。${error.message}`
+    for (const step of [...reply.steps, ...reply.nodes]) {
+      if (step.status === 'running') step.status = 'error'
+    }
   } finally {
+    reply.pending = false
     sending.value = false
     await nextTick()
     if (conversation.value) conversation.value.scrollTop = conversation.value.scrollHeight
@@ -83,9 +143,9 @@ async function sendMessage() {
 <template>
   <main class="page">
     <div class="page-heading">
-      <span class="eyebrow">CUSTOMER SUPPORT</span>
-      <h1>有问题，我们来帮你。</h1>
-      <p>从一个问题开始，让沟通更简单。</p>
+      <span class="eyebrow">E-COMMERCE AI SUPPORT</span>
+      <h1>企业级电商智能客服</h1>
+      <p>电子产品选购与售后咨询，从这里开始。</p>
     </div>
 
     <p v-if="checkingSession" role="status">正在读取登录状态…</p>
@@ -95,7 +155,7 @@ async function sendMessage() {
       <header class="chat-header">
         <div class="avatar service-avatar" aria-hidden="true">客</div>
         <div>
-          <h2>在线客服</h2>
+          <h2>电商智能客服</h2>
           <p><span class="status-dot"></span>很高兴为你服务</p>
         </div>
         <div class="account-controls">
@@ -105,6 +165,11 @@ async function sendMessage() {
       </header>
       <p v-if="authError" class="auth-error" role="alert">{{ authError }}</p>
 
+      <div class="intent-examples" aria-label="意图测试示例">
+        <span>意图测试</span>
+        <button v-for="[intent, example] in intentExamples" :key="intent" type="button" :disabled="sending" :title="example" @click="question = example">{{ intent }}</button>
+      </div>
+
       <div ref="conversation" class="conversation" role="log" aria-label="聊天记录" aria-live="polite" tabindex="0">
         <div class="conversation-note">本次对话 · 随时为你解答</div>
         <article v-for="(message, index) in messages" :key="index" class="message" :class="message.role">
@@ -112,8 +177,31 @@ async function sendMessage() {
             {{ message.role === 'assistant' ? '客' : '我' }}
           </div>
           <div class="message-content">
-            <span class="sender">{{ message.role === 'assistant' ? '客服助手' : '你' }}</span>
-            <p class="bubble">{{ message.text }}</p>
+            <span class="sender">{{ message.role === 'assistant' ? '电商客服助手' : '你' }}</span>
+            <div v-if="message.steps" class="stream-progress">
+              <p v-if="message.intent" class="intent-result"><strong>识别意图：{{ message.intent.intent }}</strong><span>{{ message.intent.reason }}</span></p>
+              <div v-if="message.nodes.length" class="node-trace">
+                <strong>Graph 节点执行轨迹</strong>
+                <ol aria-label="Graph 节点执行轨迹">
+                  <li v-for="(node, nodeIndex) in message.nodes" :key="node.id" :class="node.status">
+                    <span>{{ nodeIndex + 1 }}.</span>
+                    <span>{{ node.label }}（<code>{{ node.name }}</code>）<template v-if="node.tools?.length">：{{ node.tools.join('、') }}</template></span>
+                    <span>· {{ { running: '进行中', done: '完成', error: '失败' }[node.status] }}</span>
+                    <span v-if="node.elapsed_ms !== undefined">{{ (node.elapsed_ms / 1000).toFixed(2) }} 秒</span>
+                  </li>
+                </ol>
+              </div>
+              <ol aria-label="处理进度">
+                <li v-for="step in message.steps" :key="step.step" :class="step.status">
+                  <span aria-hidden="true">{{ step.status === 'done' ? '✓' : step.status === 'running' ? '◌' : step.status === 'error' ? '!' : '○' }}</span>
+                  {{ step.label }} · {{ { pending: '等待', running: '进行中', done: '完成', error: '失败' }[step.status] }}
+                </li>
+              </ol>
+              <p v-if="message.firstTokenMs" class="stream-timing">首字 {{ (message.firstTokenMs / 1000).toFixed(2) }} 秒<span v-if="message.elapsedMs"> · 总耗时 {{ (message.elapsedMs / 1000).toFixed(2) }} 秒</span></p>
+            </div>
+            <p v-if="message.text" class="bubble">{{ message.text }}<span v-if="message.pending" class="stream-cursor" aria-hidden="true">▍</span></p>
+            <p v-else-if="message.pending" class="bubble">正在处理…</p>
+            <p v-if="message.error" class="auth-error" role="alert">{{ message.error }}</p>
           </div>
         </article>
       </div>

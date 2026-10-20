@@ -33,8 +33,8 @@ async function login() {
 <template>
   <section class="login-card" aria-label="账号登录">
     <span class="avatar service-avatar" aria-hidden="true">客</span>
-    <h2>登录客服工作台</h2>
-    <p class="login-description">登录你的账号，开始本次对话。</p>
+    <h2>登录电商智能客服</h2>
+    <p class="login-description">登录你的账号，咨询电子产品选购、使用与售后问题。</p>
     <form class="login-form" @submit.prevent="login">
       <label for="username">账号</label>
       <input id="username" v-model="username" autocomplete="username" maxlength="64" placeholder="请输入账号" required />
