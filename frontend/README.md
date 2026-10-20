@@ -22,8 +22,11 @@ python3 main.py
 
 ```bash
 python3 -m pip install -r backend/requirements.txt
+python3 -m backend.scripts.train_intent --base-model /path/to/bert-base-chinese
 python3 -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+首次启动前需要微调本项目六类意图 BERT，默认数据仅为开发演示样本。训练步骤、数据格式和 `INTENT_MODEL_PATH` 配置见 [BERT 分类说明](../backend/graph/intent.md)。MiniMax 继续负责工具参数提取与回复生成。
 
 另开一个终端，在项目根目录启动前端：
 
@@ -38,6 +41,29 @@ npm run dev
 前端向 `/api/chat` 发送 POST 请求，Vite 开发代理将请求转发到 `http://127.0.0.1:8000`。开发环境无需浏览器跨域配置；生产部署时需要将 `/api` 转发到 FastAPI 服务。
 
 请求体：`{"message":"你好"}`，响应体为 `{"reply":"模型回复"}`。后端通过 `MiniMaxClient` 和 LangChain `create_agent` 调用固定型号 `MiniMax-Text-01`。接口文档：`http://127.0.0.1:8000/docs`。
+
+## 和风天气工具
+
+Agent 已注册 `get_weather`，可查询城市当前实时天气，例如“武汉现在天气怎么样”。天气意图仍归为闲聊，查询会经过真实的工具执行节点。暂不支持未来预报、历史天气或通用网页搜索。
+
+在根目录 `.env` 配置：
+
+```dotenv
+QWEATHER_API_HOST="控制台分配的专属域名，例如 abcxyz.qweatherapi.com"
+QWEATHER_API_KEY="你的和风天气 API Key"
+```
+
+API Host 在和风控制台的设置中查看，API Key 在项目凭据中创建；修改后重启后端。凭据只由后端读取，不放入前端。未配置时天气工具会返回失败原因，不影响登录或普通聊天。
+
+工具先通过 GeoAPI 解析城市，再请求实时天气 v1；同名地点会返回候选城市供用户确认。回答使用真实数据并附带和风天气来源、归因链接和查询时间；查询时间不是天气观测时间。
+
+可在项目根目录直接验证：
+
+```bash
+python3 -c 'import asyncio, json; from backend.tools.weather import get_weather; print(json.dumps(asyncio.run(get_weather.ainvoke({"city": "武汉"})), ensure_ascii=False))'
+```
+
+接口参考：[城市搜索](https://dev.qweather.com/docs/api/geoapi/city-lookup/)、[实时天气 v1](https://dev.qweather.com/docs/api/weather/weather-current/)。
 
 ## 登录与账号切换
 

@@ -78,6 +78,8 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .intent-result span, .stream-timing { color: #7b8982; line-height: 1.6; }
 .stream-timing { margin: 8px 0 0; font-size: 11px; }
 .stream-cursor { color: #36745c; }
+.data-sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; color: #7b8982; font-size: 11px; overflow-wrap: anywhere; }
+.data-sources a { color: #36745c; }
 
 @media (max-width: 560px) {
   .page { width: calc(100% - 24px); padding-top: 28px; }

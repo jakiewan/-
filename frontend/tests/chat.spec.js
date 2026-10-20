@@ -15,6 +15,7 @@ test.beforeEach(async ({ page }) => {
       ['progress', { step: 'tool:1', label: '执行工具：test_tool', status: 'running' }],
       ['progress', { step: 'tool:1', label: '执行工具：test_tool', status: 'done' }],
       ['node', { id: 'tools-1', name: 'tools', label: '调用工具', status: 'done', elapsed_ms: 30 }],
+      ['sources', { sources: [{ label: '和风天气', url: 'https://www.qweather.com/' }, { label: '数据归因', url: 'https://developer.qweather.com/attribution.html' }] }],
       ['node', { id: 'model-2', name: 'model', label: '生成回复', status: 'running' }],
       ['delta', { text: '测试客服' }],
       ['delta', { text: '回复' }],
@@ -57,6 +58,8 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await expect(trace).toContainText('0.12 秒')
   await expect(trace).not.toContainText('retrieve_knowledge')
   await expect(messages.nth(2)).toContainText('执行工具：test_tool · 完成')
+  await expect(messages.nth(2).getByRole('link', { name: '和风天气' })).toHaveAttribute('href', 'https://www.qweather.com/')
+  await expect(messages.nth(2).getByRole('link', { name: '数据归因' })).toHaveAttribute('href', 'https://developer.qweather.com/attribution.html')
   await expect(input).toHaveValue('')
 
   await input.fill('退货怎么办？')

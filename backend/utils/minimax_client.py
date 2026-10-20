@@ -14,6 +14,7 @@ from ..graph.nodes import create_intent_middleware
 from ..memory.context import UserContext
 from ..memory.prompts import user_memory_prompt
 from ..tools.memory import forget_user_info, remember_user_info
+from ..tools.weather import get_weather
 
 
 class MiniMaxClient:
@@ -32,7 +33,7 @@ class MiniMaxClient:
             use_responses_api=False,
             http_socket_options=(),
         )
-        intent_middleware = create_intent_middleware(model)
+        intent_middleware = create_intent_middleware()
         self.node_labels = {
             f"{intent_middleware.name}.before_agent": "意图识别",
             "model": "生成回复",
@@ -43,7 +44,7 @@ class MiniMaxClient:
             checkpointer=checkpointer,
             store=store,
             context_schema=UserContext,
-            tools=[remember_user_info, forget_user_info],
+            tools=[remember_user_info, forget_user_info, get_weather],
             middleware=[intent_middleware, user_memory_prompt],
         )
 
@@ -105,6 +106,8 @@ class MiniMaxClient:
                                     "status": "error" if item.status == "error" else "done",
                                     "label": "执行工具：" + item.name,
                                 }
+                                if item.artifact and item.artifact.get("sources"):
+                                    yield "sources", {"sources": item.artifact["sources"]}
         if not has_text:
             raise ValueError("MiniMax 未返回有效回复")
         # astream 正常结束后，检查点写入也已完成。

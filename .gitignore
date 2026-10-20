@@ -230,3 +230,5 @@ __marimo__/
 /.history/
 /.learnings/
 /.vscode/
+/checkpoint/
+!/backend/graph/intent.md

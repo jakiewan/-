@@ -60,7 +60,7 @@ async function sendMessage() {
 
   sending.value = true
   messages.value.push({ role: 'user', text })
-  const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], pending: true }) - 1
+  const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], sources: [], pending: true }) - 1
   const reply = messages.value[replyIndex]
   const startedAt = performance.now()
   question.value = ''
@@ -97,6 +97,11 @@ async function sendMessage() {
           if (!raw) continue
           const data = JSON.parse(raw)
           if (name === 'intent') reply.intent = data
+          if (name === 'sources') {
+            for (const source of data.sources) {
+              if (!reply.sources.some(item => item.url === source.url)) reply.sources.push(source)
+            }
+          }
           if (name === 'node') {
             const node = reply.nodes.find(item => item.id === data.id)
             if (node) Object.assign(node, data)
@@ -201,6 +206,13 @@ async function sendMessage() {
             </div>
             <p v-if="message.text" class="bubble">{{ message.text }}<span v-if="message.pending" class="stream-cursor" aria-hidden="true">▍</span></p>
             <p v-else-if="message.pending" class="bubble">正在处理…</p>
+            <p v-if="message.sources?.length" class="data-sources">
+              数据来源：
+              <template v-for="source in message.sources" :key="source.url">
+                <a v-if="/^https?:\/\//.test(source.url)" :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.label }}</a>
+                <span v-else>{{ source.url }}</span>
+              </template>
+            </p>
             <p v-if="message.error" class="auth-error" role="alert">{{ message.error }}</p>
           </div>
         </article>
