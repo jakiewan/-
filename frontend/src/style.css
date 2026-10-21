@@ -80,6 +80,21 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .stream-cursor { color: #36745c; }
 .data-sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; color: #7b8982; font-size: 11px; overflow-wrap: anywhere; }
 .data-sources a { color: #36745c; }
+.order-card { margin-top: 10px; padding: 14px; border: 1px solid #dce5de; border-radius: 12px; background: #fff; font-size: 12px; overflow-wrap: anywhere; }
+.order-card-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.order-card h3 { margin: 0; font-size: 14px; }
+.order-card-heading > span { padding: 4px 8px; border-radius: 6px; background: #eaf2ed; color: #36745c; }
+.order-demo { margin: 10px 0; color: #7b8982; line-height: 1.6; }
+.order-details { display: grid; gap: 8px; margin: 12px 0 0; }
+.order-details > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; }
+.order-details dt { color: #7b8982; }
+.order-details dd { margin: 0; }
+.order-items { display: grid; gap: 12px; margin: 12px 0; padding: 12px 0; border-top: 1px solid #edf1ee; border-bottom: 1px solid #edf1ee; list-style: none; }
+.order-items li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.order-items p { margin: 5px 0 0; color: #7b8982; }
+.logistics-events { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+.logistics-events li { display: grid; gap: 4px; line-height: 1.6; }
+.logistics-events time { color: #7b8982; }
 
 @media (max-width: 560px) {
   .page { width: calc(100% - 24px); padding-top: 28px; }

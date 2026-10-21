@@ -30,7 +30,7 @@ class CustomerServiceState(AgentState):
     requires_handoff: bool
     needs_clarification: bool
     clarification_question: str
-    business_route: BusinessRoute
+    is_complex: bool
     tasks: list[IntentTask]
     business_result: dict[str, object]
     evidence: list[dict[str, object]]

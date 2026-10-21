@@ -60,7 +60,7 @@ async function sendMessage() {
 
   sending.value = true
   messages.value.push({ role: 'user', text })
-  const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], sources: [], pending: true }) - 1
+  const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], sources: [], orders: [], pending: true }) - 1
   const reply = messages.value[replyIndex]
   const startedAt = performance.now()
   question.value = ''
@@ -102,6 +102,7 @@ async function sendMessage() {
               if (!reply.sources.some(item => item.url === source.url)) reply.sources.push(source)
             }
           }
+          if (name === 'orders') reply.orders = data.orders
           if (name === 'node') {
             const node = reply.nodes.find(item => item.id === data.id)
             if (node) Object.assign(node, data)
@@ -140,7 +141,12 @@ async function sendMessage() {
     reply.pending = false
     sending.value = false
     await nextTick()
-    if (conversation.value) conversation.value.scrollTop = conversation.value.scrollHeight
+    if (conversation.value) {
+      const orderCard = conversation.value.querySelector('article:last-child .order-card')
+      conversation.value.scrollTop = orderCard
+        ? conversation.value.scrollTop + orderCard.getBoundingClientRect().top - conversation.value.getBoundingClientRect().top - 12
+        : conversation.value.scrollHeight
+    }
   }
 }
 </script>
@@ -206,11 +212,39 @@ async function sendMessage() {
             </div>
             <p v-if="message.text" class="bubble">{{ message.text }}<span v-if="message.pending" class="stream-cursor" aria-hidden="true">▍</span></p>
             <p v-else-if="message.pending" class="bubble">正在处理…</p>
+            <section v-for="order in message.orders" :key="order.order_no" class="order-card" :aria-label="`订单 ${order.order_no}`">
+              <header class="order-card-heading">
+                <h3>订单 {{ order.order_no }}</h3>
+                <span>{{ order.status_label }}</span>
+              </header>
+              <p v-if="order.is_demo" class="order-demo">演示订单 · 商品和物流数据仅用于功能演示</p>
+              <dl class="order-details">
+                <div><dt>下单时间</dt><dd>{{ new Date(order.created_at).toLocaleString('zh-CN') }}</dd></div>
+                <div><dt>订单金额</dt><dd>{{ order.currency === 'CNY' ? '¥' : order.currency }}{{ order.total_amount }}</dd></div>
+              </dl>
+              <ul class="order-items" aria-label="商品信息">
+                <li v-for="(item, itemIndex) in order.items" :key="`${item.sku}-${itemIndex}`">
+                  <div><strong>{{ item.name }}</strong><p>{{ item.spec }} · 数量 {{ item.quantity }}</p></div>
+                  <span>{{ order.currency === 'CNY' ? '¥' : order.currency }}{{ item.unit_price }}</span>
+                </li>
+              </ul>
+              <dl class="order-details">
+                <div><dt>物流状态</dt><dd>{{ order.logistics_status || '暂无物流信息' }}</dd></div>
+                <div><dt>承运方</dt><dd>{{ order.carrier || '暂无' }}</dd></div>
+                <div><dt>运单号</dt><dd>{{ order.tracking_no || '暂无' }}</dd></div>
+              </dl>
+              <ol v-if="order.logistics_events.length" class="logistics-events" aria-label="物流轨迹">
+                <li v-for="(event, eventIndex) in order.logistics_events" :key="eventIndex">
+                  <time>{{ new Date(event.occurred_at).toLocaleString('zh-CN') }}</time>
+                  <span>{{ event.description }}</span>
+                </li>
+              </ol>
+            </section>
             <p v-if="message.sources?.length" class="data-sources">
               数据来源：
               <template v-for="source in message.sources" :key="source.url">
                 <a v-if="/^https?:\/\//.test(source.url)" :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.label }}</a>
-                <span v-else>{{ source.url }}</span>
+                <span v-else>{{ source.label || source.url }}</span>
               </template>
             </p>
             <p v-if="message.error" class="auth-error" role="alert">{{ message.error }}</p>

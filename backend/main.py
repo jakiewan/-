@@ -16,7 +16,9 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, Field
 
 from .utils.minimax_client import MiniMaxClient
+from .rag import FaqRetriever
 from .common.auth import current_user, router as auth_router
+from .tools.orders import setup_orders
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,13 +48,23 @@ async def lifespan(app: FastAPI):
                 await conn.execute("CREATE SCHEMA IF NOT EXISTS customer_chat")
                 await checkpointer.setup()
                 await store.setup()
+                await setup_orders(conn)
             finally:
                 await conn.execute("SELECT pg_advisory_unlock(hashtextextended('customer_chat:setup', 0))")
         app.state.db_pool = pool
         # 请求锁最多占四个连接，留一个给 Saver/Store，避免耗尽连接池。
         app.state.chat_slots = asyncio.Semaphore(4)
-        app.state.minimax = MiniMaxClient(checkpointer, store)
-        yield
+        retriever = None
+        try:
+            try:
+                retriever = await asyncio.to_thread(FaqRetriever)
+            except Exception as exc:
+                logger.warning("知识检索初始化失败：%s", type(exc).__name__)
+            app.state.minimax = MiniMaxClient(checkpointer, store, retriever=retriever, db_pool=pool)
+            yield
+        finally:
+            if retriever is not None:
+                await asyncio.to_thread(retriever.close)
 
 
 app = FastAPI(lifespan=lifespan)

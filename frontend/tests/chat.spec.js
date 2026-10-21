@@ -6,20 +6,21 @@ test.beforeEach(async ({ page }) => {
     contentType: 'text/event-stream',
     body: [
       ['start', {}],
-      ['node', { id: 'intent-1', name: 'recognize_intent.before_agent', label: '意图识别', status: 'running' }],
+      ['node', { id: 'prepare-1', name: 'prepare_context', label: '准备本轮状态', status: 'running' }],
+      ['node', { id: 'prepare-1', name: 'prepare_context', label: '准备本轮状态', status: 'done', elapsed_ms: 1 }],
+      ['node', { id: 'intent-1', name: 'recognize_intent', label: 'BERT 意图识别', status: 'running' }],
       ['intent', { intent: '咨询', reason: '询问信息' }],
-      ['node', { id: 'intent-1', name: 'recognize_intent.before_agent', label: '意图识别', status: 'done', elapsed_ms: 50 }],
-      ['node', { id: 'model-1', name: 'model', label: '生成回复', status: 'running' }],
-      ['node', { id: 'model-1', name: 'model', label: '生成回复', status: 'done', elapsed_ms: 120 }],
-      ['node', { id: 'tools-1', name: 'tools', label: '调用工具', tools: ['test_tool'], status: 'running' }],
-      ['progress', { step: 'tool:1', label: '执行工具：test_tool', status: 'running' }],
-      ['progress', { step: 'tool:1', label: '执行工具：test_tool', status: 'done' }],
-      ['node', { id: 'tools-1', name: 'tools', label: '调用工具', status: 'done', elapsed_ms: 30 }],
-      ['sources', { sources: [{ label: '和风天气', url: 'https://www.qweather.com/' }, { label: '数据归因', url: 'https://developer.qweather.com/attribution.html' }] }],
-      ['node', { id: 'model-2', name: 'model', label: '生成回复', status: 'running' }],
+      ['node', { id: 'intent-1', name: 'recognize_intent', label: 'BERT 意图识别', status: 'done', elapsed_ms: 50 }],
+      ['node', { id: 'retrieve-1', name: 'retrieve_knowledge', label: '知识检索（暂未接入）', status: 'running' }],
+      ['node', { id: 'retrieve-1', name: 'retrieve_knowledge', label: '知识检索（暂未接入）', status: 'done', elapsed_ms: 1 }],
+      ['node', { id: 'answer-1', name: 'generate_answer', label: '生成回复候选', status: 'running' }],
+      ['node', { id: 'answer-1', name: 'generate_answer', label: '生成回复候选', status: 'done', elapsed_ms: 100 }],
+      ['node', { id: 'validate-1', name: 'validate_answer', label: '校验回复', status: 'running' }],
+      ['sources', { sources: [{ label: '资料来源', url: 'https://example.com/product' }] }],
       ['delta', { text: '测试客服' }],
       ['delta', { text: '回复' }],
-      ['node', { id: 'model-2', name: 'model', label: '生成回复', status: 'done', elapsed_ms: 100 }],
+      ['node', { id: 'validate-1', name: 'validate_answer', label: '校验回复', status: 'done', elapsed_ms: 1 }],
+      ['progress', { step: 'save', label: '检查点已保存（非节点）', status: 'done' }],
       ['done', {}],
     ].map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(''),
   }))
@@ -51,15 +52,14 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await expect(messages.nth(2)).toContainText('测试客服回复')
   await expect(messages.nth(2)).toContainText('识别意图：咨询')
   const trace = messages.nth(2).getByRole('list', { name: 'Graph 节点执行轨迹' })
-  await expect(trace.locator('code')).toHaveText(['recognize_intent.before_agent', 'model', 'tools', 'model'])
-  await expect(trace.getByRole('listitem')).toHaveCount(4)
-  await expect(trace).toContainText('意图识别（recognize_intent.before_agent）')
-  await expect(trace).toContainText('调用工具（tools）：test_tool')
-  await expect(trace).toContainText('0.12 秒')
-  await expect(trace).not.toContainText('retrieve_knowledge')
-  await expect(messages.nth(2)).toContainText('执行工具：test_tool · 完成')
-  await expect(messages.nth(2).getByRole('link', { name: '和风天气' })).toHaveAttribute('href', 'https://www.qweather.com/')
-  await expect(messages.nth(2).getByRole('link', { name: '数据归因' })).toHaveAttribute('href', 'https://developer.qweather.com/attribution.html')
+  await expect(trace.locator('code')).toHaveText(['prepare_context', 'recognize_intent', 'retrieve_knowledge', 'generate_answer', 'validate_answer'])
+  await expect(trace.getByRole('listitem')).toHaveCount(5)
+  await expect(trace).toContainText('BERT 意图识别（recognize_intent）')
+  await expect(trace).toContainText('知识检索（暂未接入）（retrieve_knowledge）')
+  await expect(trace).toContainText('0.10 秒')
+  await expect(trace).not.toContainText('select_business_route')
+  await expect(messages.nth(2)).toContainText('检查点已保存（非节点） · 完成')
+  await expect(messages.nth(2).getByRole('link', { name: '资料来源' })).toHaveAttribute('href', 'https://example.com/product')
   await expect(input).toHaveValue('')
 
   await input.fill('退货怎么办？')

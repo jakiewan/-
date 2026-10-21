@@ -8,3 +8,7 @@ psycopg[binary,pool]==3.3.4
 httpx==0.28.1
 torch==2.13.0
 transformers==4.57.6
+pymilvus==3.0.1
+redis==8.1.0
+langchain-huggingface==1.2.2
+sentence-transformers==3.4.1
