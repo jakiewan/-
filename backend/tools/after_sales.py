@@ -33,10 +33,13 @@ async def setup_after_sales(conn):
 
 
 async def submit_after_sales(pool, user_id: str, *, order_no: str, item_sku: str,
-                             action: str, reason: str, request_id: str) -> dict:
+                             action: str, reason: str, request_id: str, expected_items: list | None = None) -> dict:
     """锁定本人订单后创建申请；相同动作返回原单，不同动作明确拒绝，避免误报提交成功。"""
     if not user_id or action not in ACTION_LABELS:
         raise ValueError("售后申请身份或类型无效")
+    # 空 SKU 表示整单退货，商品快照保存在原有 JSONB 字段中。
+    if item_sku == "" and action != "return":
+        raise ValueError("整单申请仅支持退货，换货或维修请选择一件商品")
     async with pool.connection() as conn:
         async with conn.transaction():
             async with conn.cursor(row_factory=dict_row) as cur:
@@ -50,9 +53,9 @@ async def submit_after_sales(pool, user_id: str, *, order_no: str, item_sku: str
                 await cur.execute("""
                     SELECT * FROM customer_chat.after_sales_applications
                     WHERE user_id = %s AND (request_id = %s OR
-                        (order_no = %s AND item_sku = %s AND status = 'pending_review'))
+                        (order_no = %s AND (item_sku = %s OR item_sku = '' OR %s = '') AND status = 'pending_review'))
                     ORDER BY created_at DESC LIMIT 1
-                """, (user_id, request_id, order_no, item_sku))
+                """, (user_id, request_id, order_no, item_sku, item_sku))
                 application = await cur.fetchone()
                 existing = application is not None
                 if application is not None and (application["order_no"], application["item_sku"], application["action"]) != (order_no, item_sku, action):
@@ -65,20 +68,24 @@ async def submit_after_sales(pool, user_id: str, *, order_no: str, item_sku: str
                 if application is None:
                     if order["status"] not in ELIGIBLE_STATUSES:
                         raise ValueError("该订单未付款或已取消，无法提交退货、换货或维修申请")
-                    items = [item for item in order["items"] if item.get("sku") == item_sku]
-                    if len(items) != 1:
+                    items = order["items"] if item_sku == "" else [item for item in order["items"] if item.get("sku") == item_sku]
+                    if not items or (item_sku != "" and len(items) != 1):
                         raise ValueError("无法唯一确定申请商品，请重新选择订单中的商品")
+                    if expected_items is not None and items != expected_items:
+                        raise ValueError("订单商品已变化，请重新核对商品及数量后确认")
+                    item = {"sku": "", "name": "整单全部商品", "items": items} if item_sku == "" else items[0]
                     await cur.execute("""
                         INSERT INTO customer_chat.after_sales_applications
                         (application_no, request_id, user_id, order_no, item_sku, item, action, reason, is_demo)
                         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
                     """, ("AS-" + uuid4().hex.upper(), request_id, user_id, order_no,
-                          item_sku, Jsonb(items[0]), action, reason, order["is_demo"]))
+                          item_sku, Jsonb(item), action, reason, order["is_demo"]))
                     application = await cur.fetchone()
     return {
         "application_no": application["application_no"], "order_no": application["order_no"],
         "action": application["action"], "action_label": ACTION_LABELS[application["action"]],
-        "item": application["item"], "reason": application["reason"],
+        "item": application["item"], "items": application["item"].get("items", [application["item"]]),
+        "all_items": application["item_sku"] == "", "reason": application["reason"],
         "status": application["status"],
         "status_label": "待审核" if application["status"] == "pending_review" else application["status"],
         "created_at": application["created_at"].isoformat(),

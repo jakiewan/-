@@ -253,7 +253,10 @@ async function sendMessage(text = question.value.trim()) {
               <dl class="order-details">
                 <div><dt>申请类型</dt><dd>{{ application.action_label }}</dd></div>
                 <div><dt>订单号</dt><dd>{{ application.order_no }}</dd></div>
-                <div><dt>商品</dt><dd>{{ application.item.name }} · {{ application.item.spec }} · 数量 {{ application.item.quantity }}</dd></div>
+                <div v-if="application.all_items"><dt>申请范围</dt><dd>整单全部商品</dd></div>
+                <div><dt>商品</dt><dd>
+                  <p v-for="(item, itemIndex) in application.items || [application.item]" :key="`${item.sku}-${itemIndex}`">{{ item.name }} · {{ item.spec }} · 数量 {{ item.quantity }}</p>
+                </dd></div>
                 <div><dt>申请原因</dt><dd>{{ application.reason || '未提供' }}</dd></div>
                 <div><dt>提交时间</dt><dd>{{ new Date(application.created_at).toLocaleString('zh-CN') }}</dd></div>
               </dl>

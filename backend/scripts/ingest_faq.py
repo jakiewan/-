@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import redis
 from dotenv import load_dotenv
@@ -27,9 +28,12 @@ def main():
     policies = [json.loads(line) for line in args.path.read_text().splitlines() if line.strip()]
     ids = set()
     for row in policies:
+        source = urlsplit(row["source"])
+        host = source.hostname or ""
         if (row["faq_item_id"] in ids or not row["questions"] or not row["answer"].strip()
                 or row["brand"] != "小米" or row["goodsid"] != "65539"
-                or not row["source"].startswith("https://") or not row["version"]):
+                or source.scheme != "https" or not (host == "mi.com" or host.endswith(".mi.com"))
+                or not row["version"]):
             raise ValueError("官方 FAQ 内容或适用范围无效")
         ids.add(row["faq_item_id"])
     if not policies:
@@ -53,6 +57,7 @@ def main():
             index = c.prepare_index_params()
             index.add_index(field_name="vector", index_type="AUTOINDEX", metric_type="COSINE")
             c.create_collection(collection, schema=schema, index_params=index)
+        # shortcut: 当前源 FAQ 仅64条；扩容超过1000条时改为 query_iterator 全量复制。
         old = c.query("faq_question", filter="", limit=1000,
                       output_fields=["id", "faq_item_id", "text", "goodsids", "sales_channels", "vector"])
         retained = []

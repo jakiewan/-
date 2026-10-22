@@ -18,11 +18,12 @@ logger = logging.getLogger(__name__)
 
 class PreparedQuery(BaseModel):
     query: str = Field(description="合并用户明确条件后的完整问题，不添加新诉求")
-    continues_task: bool = Field(description="本轮补参、纠正或指代追问为 true，独立新话题为 false")
+    continues_task: bool = Field(description="仍引用历史商品或品类时为true，包括换咨询方面；明确换题或独立新商品时为false")
     goodsid: Literal["", "65539", "65540", "65541", "65542", "65543"] = ""
     product_model: str = ""
     product_models: list[str] = Field(default_factory=list, description="比较多个具体型号时逐项列出全部型号；不把比较问题当成缺少单一型号")
     brand: str = Field(default="", description="用户明确的品牌，例如小米、苹果、GC；未知为空")
+    other_brand_requested: bool = Field(description="实际咨询或比较对象包含其他真实品牌时为true；只是说不是苹果而是小米时为false")
     market: Literal["", "CN", "OTHER"] = Field(default="", description="明确国行/中国大陆为CN，港版、海外版等为OTHER；未说明为空，不根据英文型号猜地区")
     sales_channel: Literal["", "MALL", "DIRECT", "AUTHORIZED"] = ""
     has_question: bool = Field(description="用户是否明确提供咨询方面；我想了解GC A10、仅型号或仅纠正型号都不能擅自当成参数概览")
@@ -64,14 +65,20 @@ def build_rag_pipeline(model, retriever):
                     "比较小米15和小米15 Pro电池时，product_models列出这两个型号，咨询内容已明确，不询问选择哪一个。"
                     "market必须依据用户说明：港版小米15为OTHER，即使目录只有国行也不能改成CN；未说明地区则为空。"
                     "只提取用户明确提供或确认的条件，不从助手猜测、建议或无关追问中提取。"
+                    "苹果手机能按小米政策办理：实际对象是苹果，other_brand_requested=true；"
+                    "不是苹果，我问小米15参数：实际对象是小米，other_brand_requested=false。"
                     "每轮保留同一需求已经确认的品类和型号。型号纠正时替换型号，保留仍适用的咨询内容。"
-                    "明确换个问题、取消或独立新需求时 continues_task=false，不继承旧商品和旧主题。"
+                    "明确换个问题、取消或独立新商品诉求时 continues_task=false，不继承旧商品和旧主题；"
+                    "同一商品换咨询方面仍为true，不因为问题内容变化就清空商品条件。"
+                    "例如前轮用户补充手机、助手回答主机保修12个月，本轮问那是从发货还是签收开始算，"
+                    "continues_task=true、goodsid=65539，query=手机三包期限从发货还是签收开始计算。"
                     "has_question 只判断咨询内容：屏幕、参数、保修多久都已明确，不再细问子项；"
                     "我想了解GC A10尚未表达咨询内容，has_question=false。"
                     "严格示例：当前消息=我想了解 GC A10、无历史待补任务时，"
                     "query=我想了解 GC A10，product_model=GC A10，has_question=false；"
                     "不能重写成GC A10的参数、概览、介绍或信息。"
                     "GC A10的屏幕、它的处理器呢等型号专属问题 requires_model=true；"
+                    "容量、尺寸、分辨率、充电功率及能否一直保持90W都属于型号参数或功能解释，requires_model=true。"
                     "手机保修多久、维修材料、手机开不了机等通用品类问题 requires_model=false。"
                     "例如保修多久→手机，完整问题是手机保修多久，goodsid=65539，has_question=true。"
                     "仅问保修多久且没有已知品类时，goodsid为空，不能默认手机；保修等咨询主题不是品类。"
@@ -100,6 +107,10 @@ def build_rag_pipeline(model, retriever):
                 if prepared["goodsid"] and not previous.get("goodsid") and not state["history"]:
                     prepared["query"] = state["question"]
                 prepared["goodsid"] = previous.get("goodsid", "")
+            if not prepared["goodsid"] and prepared["continues_task"]:
+                mentioned = [key for key, label in CATEGORIES.items() if label in user_context]
+                if len(mentioned) == 1:
+                    prepared["goodsid"] = mentioned[0]
             model_context = user_context + (state["history"] if prepared["continues_task"] else "")
             model_context += previous.get("product_model", "")
             normalize = lambda value: value.replace(" ", "").lower().replace("xiaomi", "小米")
@@ -132,7 +143,8 @@ def build_rag_pipeline(model, retriever):
                              "OPPO": ("oppo",), "vivo": ("vivo",)}
             other_brands = [brand for brand, aliases in brand_aliases.items()
                             if any(alias in state["question"].lower() for alias in aliases)]
-            if other_brands:
+            requested_other = bool(other_brands) and (not explicit or prepared["other_brand_requested"])
+            if requested_other:
                 prepared["brand"] = other_brands[0]
             prepared["query"] = prepared["query"].strip() or state["question"]
             category = next((key for key, label in CATEGORIES.items() if label == state["question"].strip()), "")
@@ -148,7 +160,7 @@ def build_rag_pipeline(model, retriever):
             }
             if prepared["market"] == "OTHER":
                 result = {"status": "unsupported", "message": "当前知识库接入的是中国大陆版本资料，尚未接入港版或其他海外版本，无法核实对应参数及政策，不能直接套用国行数据。"}
-            elif other_brands:
+            elif requested_other:
                 result = {"status": "unsupported", "message": "当前接入的真实手机资料和政策来自小米中国大陆官网，无法核实其他品牌的参数及权益，不能直接套用小米三包政策。"}
             return {"prepared": prepared, "result": result}
         except Exception as exc:
@@ -164,6 +176,9 @@ def build_rag_pipeline(model, retriever):
             result = await asyncio.to_thread(
                 retriever.search, query["query"], goodsid=query["goodsid"], sales_channel=query["sales_channel"], brand=query["brand"],
             )
+            # 当前 FAQ 是泛品类政策，不能把相似的保修条款当成型号参数答案。
+            if query["requires_model"] and result["status"] in ("ok", "ambiguous"):
+                result = {"status": "no_match", "evidence": [], "candidates": []}
             logger.info("RAG FAQ status=%s evidence=%s", result["status"],
                         [item["evidence_id"] for item in result["evidence"]])
             return {"result": result, "evidence": result["evidence"]}
@@ -172,7 +187,7 @@ def build_rag_pipeline(model, retriever):
             return {"failed": True}
 
     def after_faq(state: RagState):
-        return "document_search" if not state.get("failed") and state["result"]["status"] == "no_match" else "rag_result"
+        return "document_search" if not state.get("failed") and state["result"]["status"] in ("no_match", "ambiguous") else "rag_result"
 
     async def document_search(state: RagState):
         query = state["prepared"]

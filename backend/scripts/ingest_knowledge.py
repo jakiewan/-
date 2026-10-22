@@ -93,15 +93,22 @@ def ingest(retriever, rows):
         print(f"已导入 {min(start + 16, len(rows))}/{len(rows)}", flush=True)
     client.flush(collection)
     client.load_collection(collection)
+    model_goodsids = dict(existing.get("model_goodsids", {}))
+    model_brands = dict(existing.get("model_brands", {}))
+    for row in rows:
+        metadata = row["metadata"]
+        model = metadata["product_model"]
+        goodsid = metadata.get("goodsid") or ("65539" if metadata.get("product_type") == "phone" else "")
+        brand = metadata.get("brand") or ("GC" if metadata.get("simulated") is True and model.startswith("GC ") else "")
+        if goodsid:
+            model_goodsids[model] = goodsid
+        if brand:
+            model_brands[model] = brand
     retriever.redis.set(f"{prefix}:meta", json.dumps({
         "embedding": HYBRID_SIGNATURE,
         "models": sorted(set(existing.get("models", [])) | {r["metadata"]["product_model"] for r in rows}),
-        "model_goodsids": {**existing.get("model_goodsids", {}),
-                           **{r["metadata"]["product_model"]: r["metadata"]["goodsid"]
-                              for r in rows if r["metadata"].get("goodsid")}},
-        "model_brands": {**existing.get("model_brands", {}),
-                         **{r["metadata"]["product_model"]: r["metadata"]["brand"]
-                            for r in rows if r["metadata"].get("brand")}},
+        "model_goodsids": model_goodsids,
+        "model_brands": model_brands,
         "general_models": {**existing.get("general_models", {}),
                            **{r["metadata"]["brand"]: r["metadata"]["product_model"]
                               for r in rows if r["metadata"].get("general")}},
