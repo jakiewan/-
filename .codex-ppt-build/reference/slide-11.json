@@ -1,0 +1,21 @@
+{"schema":"openai.presentation.layout/v5","unit":"px","slide":{"id":"sl/jetc3ut0","index":10,"layout":{"id":"ly/3yt8jipk","name":"master-page445"},"backgroundColor":"rgba(255,255,255,1)","position":{"left":0,"top":0,"width":1280,"height":720}},
+"elements":[
+{"id":"im/vudorixk","kind":"image","name":"图片 516","position":{"left":0,"top":0,"width":1279.97,"height":719.96}},
+{"id":"im/4z6po7eh","kind":"image","name":"图片 517","position":{"left":436.99,"top":434.99,"width":129.98,"height":97.97}},
+{"id":"im/p0f6xcfm","kind":"image","name":"图片 518","position":{"left":746,"top":159,"width":94.98,"height":87.95}},
+{"id":"im/dgb61s76","kind":"image","name":"图片 519","position":{"left":757,"top":438.99,"width":86.97,"height":84.96}},
+{"id":"im/cf25876l","kind":"image","name":"图片 520","position":{"left":460.01,"top":155,"width":86.97,"height":87.95}},
+{"id":"sh/apgv6h8n","kind":"textbox","name":"文本框 521","position":{"left":81.9,"top":61.3,"width":389.62,"height":53.48},"text":"我们的技术亮点","style":{"fontSize":46,"typeface":"微软雅黑","color":"#081343","bold":true},"geometry":"rect","lineWidth":0},
+{"id":"sh/vqpwfmps","kind":"textbox","name":"文本框 522","position":{"left":192.91,"top":251.6,"width":348.48,"height":41.95},"text":"多智能体协作架构","style":{"fontSize":36,"typeface":"微软雅黑","color":"#0C1441","bold":true},"geometry":"rect","lineWidth":0},
+{"id":"sh/kfixcbqp","kind":"textbox","name":"文本框 523","position":{"left":799.07,"top":252.43,"width":341.56,"height":41.95},"text":"RAG知识检索优化","style":{"fontSize":36,"typeface":"微软雅黑","color":"#0D1440","bold":true},"geometry":"rect","lineWidth":0},
+{"id":"sh/idgfa18j","kind":"textbox","name":"文本框 525","position":{"left":134.78,"top":312.53,"width":422.48,"height":24.53},"text":"使用LangGraph/CrewAI实现多智能体协作,","style":{"fontSize":21.07,"typeface":"微软雅黑","color":"#1D2242"},"geometry":"rect","lineWidth":0},
+{"id":"sh/3ed0fa98","kind":"textbox","name":"文本框 529","position":{"left":737.76,"top":313.51,"width":438.27,"height":24.53},"text":"使用多路召回+重排策略,检索准确率提升XX%,","style":{"fontSize":21.07,"typeface":"微软雅黑","color":"#1F2544"},"geometry":"rect","lineWidth":0},
+{"id":"sh/hcbyd0ri","kind":"textbox","name":"文本框 535","position":{"left":116.3,"top":338.49,"width":456.6,"height":24.53},"text":"任务分解、并行处理、专业化分工,效率提升XX%","style":{"fontSize":21.07,"typeface":"微软雅黑","color":"#1D2242"},"geometry":"rect","lineWidth":0},
+{"id":"sh/mt43itof","kind":"textbox","name":"文本框 539","position":{"left":857.91,"top":339.51,"width":179.53,"height":24.53},"text":"从XX%提升至XX%","style":{"fontSize":21.07,"typeface":"微软雅黑","color":"#1F2544"},"geometry":"rect","lineWidth":0},
+{"id":"sh/ypk3e9o3","kind":"textbox","name":"文本框 543","position":{"left":208.29,"top":518.59,"width":261.36,"height":41.95},"text":"工作流自动化","style":{"fontSize":36,"typeface":"微软雅黑","color":"#0C1440","bold":true},"geometry":"rect","lineWidth":0},
+{"id":"sh/zqtk7e5o","kind":"textbox","name":"文本框 544","position":{"left":863.7,"top":518.59,"width":261.36,"height":41.95},"text":"动态任务调度","style":{"fontSize":36,"typeface":"微软雅黑","color":"#0C143F","bold":true},"geometry":"rect","lineWidth":0},
+{"id":"sh/krmlgj69","kind":"textbox","name":"文本框 545","position":{"left":156.28,"top":576.53,"width":380.85,"height":24.53},"text":"集成N8n实现端到端自动化,减少人工干","style":{"fontSize":21.07,"typeface":"微软雅黑","color":"#1E2341"},"geometry":"rect","lineWidth":0},
+{"id":"sh/sfq5g7qp","kind":"textbox","name":"文本框 550","position":{"left":740.83,"top":580.5,"width":434.99,"height":24.53},"text":"基于任务优先级和Agent负载的动态调度算法,","style":{"fontSize":21.07,"typeface":"微软雅黑","color":"#1E2342"},"geometry":"rect","lineWidth":0},
+{"id":"sh/4bq5c7qd","kind":"textbox","name":"文本框 554","position":{"left":199.45,"top":605.59,"width":293.25,"height":25.47},"text":"预,降低错误率,自动化率XX%","style":{"fontSize":22,"typeface":"微软雅黑","color":"#1E2341"},"geometry":"rect","lineWidth":0},
+{"id":"sh/9obi94jq","kind":"textbox","name":"文本框 560","position":{"left":848.69,"top":606.43,"width":191.89,"height":23.24},"text":"资源利用率提升XX%","style":{"fontSize":20,"typeface":"微软雅黑","color":"#1D2241"},"geometry":"rect","lineWidth":0}
+]}

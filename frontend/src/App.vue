@@ -18,17 +18,14 @@ const commonQuestions = [
   '小米15的屏幕参数是什么？',
   '小米15支持多少瓦有线充电？',
   '小米15 Pro有哪些运行内存和存储版本？',
-]
-const intentExamples = [
-  ['咨询', '小米15 的屏幕参数是什么？'],
-  ['投诉', '我要投诉，小米15 手机的售后问题一直没有人处理'],
-  ['售后', '我要申请蓝牙耳机维修，原因是无法开机。'],
-  ['订单查询', '帮我查询最近一笔订单的物流状态。'],
-  ['转人工', '小米15 手机的问题我想找真人处理，请帮我转人工客服'],
-  ['闲聊', '你好，我是小米手机用户，来打个招呼'],
+  '我要投诉，小米15 手机的售后问题一直没有人处理',
+  '我要申请蓝牙耳机维修，原因是无法开机。',
+  '帮我查询最近一笔订单的物流状态。',
+  '小米15 手机的问题我想找真人处理，请帮我转人工客服',
+  '你好，我是 小米 手机用户，来打个招呼',
 ]
 const messages = ref([
-  { role: 'assistant', text: '你好，欢迎使用某米电商智能客服 👋\n关于手机、电脑、数码配件的选购、使用和售后问题，都可以在这里咨询。' },
+  { role: 'assistant', text: '你好，欢迎使用服务通智能客服 👋\n关于手机、电脑、数码配件的选购、使用和售后问题，都可以在这里咨询。' },
 ])
 
 function changeUser(value) {
@@ -79,6 +76,7 @@ async function logout() {
 async function sendMessage(text = question.value.trim()) {
   if (!text || sending.value || switching.value || !user.value) return
 
+  showCommonQuestions.value = false
   sending.value = true
   messages.value.push({ role: 'user', text })
   const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], sources: [], orders: [], applications: [], pending: true }) - 1
@@ -175,44 +173,57 @@ async function sendMessage(text = question.value.trim()) {
 </script>
 
 <template>
-  <main class="page">
-    <div class="page-heading">
-      <span class="eyebrow">E-COMMERCE AI SUPPORT</span>
-      <h1>某米电商智能客服</h1>
-      <p>电子产品选购与售后咨询，从这里开始。</p>
-    </div>
+  <main class="page" :class="{ 'is-authenticated': user }">
+    <header class="page-heading">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v11H9l-4 3V5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 9h6M9 12h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </span>
+        <div><span class="eyebrow">SERVICE HUB</span><h1>服务通智能客服</h1></div>
+      </div>
+      <p class="workspace-label">客户服务工作台 <span> / </span> 智能会话</p>
+    </header>
 
     <p v-if="checkingSession" role="status">正在读取登录状态…</p>
     <LoginForm v-else-if="!user" :message="authError" @logged-in="changeUser" />
 
-    <section v-else class="chat" aria-label="客服对话">
-      <header class="chat-header">
-        <div class="avatar service-avatar" aria-hidden="true">客</div>
-        <div>
-          <h2>某米电商智能客服</h2>
-          <p><span class="status-dot"></span>很高兴为你服务</p>
-        </div>
+    <div v-else class="workspace">
+      <aside class="workspace-sidebar" aria-label="服务导航">
+        <div class="sidebar-label">工作空间</div>
+        <div class="workspace-current"><span aria-hidden="true">◈</span> 智能会话 <span class="ai-badge">AI</span></div>
+        <div class="sidebar-tip"><span class="tip-icon" aria-hidden="true">✦</span><strong>让问题更清晰</strong><p>提供商品型号与具体问题，帮助我们找到更合适的解答。</p></div>
+        <p class="sidebar-footer">SERVICE HUB <span>智能服务 · 轻松沟通</span></p>
         <div class="account-controls">
           <span class="account-name">{{ user.username }}</span>
           <button class="switch-account" type="button" :disabled="sending || switching" @click="logout">{{ switching ? '退出中…' : '退出 / 切换账号' }}</button>
         </div>
+      </aside>
+      <section class="chat" aria-label="客服对话">
+      <header class="chat-header">
+        <div class="avatar service-avatar" aria-hidden="true">✦</div>
+        <div>
+          <h2>智能服务助手 <span class="assistant-badge">AI</span></h2>
+          <p><span class="status-dot"></span>{{ sending ? '正在为您处理问题' : '商品咨询 · 订单查询 · 售后协助' }}</p>
+        </div>
       </header>
       <p v-if="authError" class="auth-error" role="alert">{{ authError }}</p>
 
-      <div class="intent-examples" aria-label="意图测试示例">
-        <span>意图测试</span>
-        <button v-for="[intent, example] in intentExamples" :key="intent" type="button" :disabled="sending" :title="example" @click="question = example">{{ intent }}</button>
-      </div>
-
-      <div ref="conversation" class="conversation" role="log" aria-label="聊天记录" aria-live="polite" tabindex="0">
+      <div ref="conversation" class="conversation" :class="{ 'is-empty': messages.length === 1 }" role="log" aria-label="聊天记录" aria-live="polite" tabindex="0">
         <div class="conversation-note">本次对话 · 随时为你解答</div>
+        <div v-if="messages.length === 1" class="welcome-intro">
+          <div class="welcome-symbol" aria-hidden="true">✦</div>
+          <span class="eyebrow">YOUR SERVICE ASSISTANT</span>
+          <h2>您好，有什么可以帮您？</h2>
+        </div>
         <article v-for="(message, index) in messages" :key="index" class="message" :class="message.role">
           <div class="avatar" :class="message.role === 'assistant' ? 'service-avatar' : 'user-avatar'" aria-hidden="true">
             {{ message.role === 'assistant' ? '客' : '我' }}
           </div>
-          <div class="message-content">
+          <div class="message-content" :class="{ 'has-business-card': message.orders?.length || message.applications?.length }">
             <span class="sender">{{ message.role === 'assistant' ? '电商客服助手' : '你' }}</span>
-            <div v-if="message.steps" class="stream-progress">
+            <details v-if="message.steps" class="stream-progress">
+              <summary><span class="trace-status" :class="{ pending: message.pending, failed: message.error }" aria-hidden="true"></span><span>{{ message.error ? '处理未完成' : message.pending ? '正在处理' : '处理完成' }}</span><span v-if="message.intent" class="trace-intent">{{ message.intent.intent }}</span><span v-if="message.elapsedMs" class="trace-duration">{{ (message.elapsedMs / 1000).toFixed(2) }} 秒</span><span class="trace-toggle">执行详情 <span aria-hidden="true">⌄</span></span></summary>
+              <div class="trace-details">
               <p v-if="message.intent" class="intent-result"><strong>识别意图：{{ message.intent.intent }}</strong><span>意图来源：{{ message.intent.source }}</span><span v-if="message.intent.reason">{{ message.intent.reason }}</span><span>已提供上一轮问答：{{ message.intent.context_used ? '是' : '否' }}</span></p>
               <div v-if="message.nodes.length" class="node-trace">
                 <strong>Graph 节点执行轨迹</strong>
@@ -232,7 +243,8 @@ async function sendMessage(text = question.value.trim()) {
                 </li>
               </ol>
               <p v-if="message.firstTokenMs" class="stream-timing">首字 {{ (message.firstTokenMs / 1000).toFixed(2) }} 秒<span v-if="message.elapsedMs"> · 总耗时 {{ (message.elapsedMs / 1000).toFixed(2) }} 秒</span></p>
-            </div>
+              </div>
+            </details>
             <p v-if="message.text" class="bubble">{{ message.text }}<span v-if="message.pending" class="stream-cursor" aria-hidden="true">▍</span></p>
             <p v-else-if="message.pending" class="bubble">正在处理…</p>
             <section v-for="order in message.orders" :key="order.order_no" class="order-card" :aria-label="`订单 ${order.order_no}`">
@@ -290,7 +302,7 @@ async function sendMessage(text = question.value.trim()) {
 
       <footer class="chat-footer" @focusout="closeCommonQuestions">
         <div v-if="showCommonQuestions && !question.trim() && !sending && !switching" class="question-suggestions">
-          <p>常见问题 · 点击填入</p>
+          <p>常见问题 <span>选择一个问题开始咨询</span></p>
           <ul aria-label="常见问题">
             <li v-for="example in commonQuestions" :key="example">
               <button type="button" @click="selectQuestion(example)">{{ example }}</button>
@@ -299,12 +311,13 @@ async function sendMessage(text = question.value.trim()) {
         </div>
         <form class="composer" @submit.prevent="sendMessage()">
           <label class="sr-only" for="question">输入你的问题</label>
-          <input id="question" ref="questionInput" v-model="question" type="text" placeholder="输入你的问题…" autocomplete="off" @focus="showCommonQuestions = true" @keydown.enter="($event.isComposing || $event.keyCode === 229) && $event.preventDefault()" />
+          <input id="question" ref="questionInput" v-model="question" type="text" placeholder="输入问题，让我们为您解答…" autocomplete="off" @focus="showCommonQuestions = true" @click="showCommonQuestions = true" @keydown.enter="($event.isComposing || $event.keyCode === 229) && $event.preventDefault()" />
           <button type="submit" :disabled="sending || switching || !question.trim()">{{ sending ? '发送中…' : '发送' }} <span aria-hidden="true">↗</span></button>
         </form>
         <p class="input-hint">按 Enter 发送 <span>记忆按账号保存，刷新仅清空显示</span></p>
       </footer>
-    </section>
-    <p class="page-footer">让每一个问题，都得到回应。</p>
+      </section>
+    </div>
+    <p class="page-footer">服务通 <span>·</span> 让每一个问题，都得到回应。</p>
   </main>
 </template>

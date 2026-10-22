@@ -1,0 +1,21 @@
+{"schema":"openai.presentation.layout/v5","unit":"px","slide":{"id":"sl/jyx0ra1s","index":3,"layout":{"id":"ly/14ra9krq","name":"master-page122"},"backgroundColor":"rgba(255,255,255,1)","position":{"left":0,"top":0,"width":1280,"height":720}},
+"elements":[
+{"id":"im/fu58jm9s","kind":"image","name":"图片 161","position":{"left":0,"top":0,"width":1279.97,"height":719.96}},
+{"id":"im/utwrqhs7","kind":"image","name":"图片 162","position":{"left":661,"top":81,"width":600.94,"height":373.95}},
+{"id":"im/pk7apgru","kind":"image","name":"图片 163","position":{"left":70,"top":239.02,"width":6.95,"height":10.96}},
+{"id":"sh/h8nm5gn2","kind":"textbox","name":"文本框 164","position":{"left":69.54,"top":58.47,"width":348.48,"height":55.9},"text":"系统架构设计","style":{"fontSize":48,"typeface":"微软雅黑","color":"#071042","bold":true},"geometry":"rect","lineWidth":0},
+{"id":"sh/u5w3a14r","kind":"textbox","name":"文本框 165","position":{"left":82.47,"top":232.52,"width":69.52,"height":24.53},"text":"技术栈","style":{"fontSize":21.07,"typeface":"微软雅黑","color":"#000000"},"geometry":"rect","lineWidth":0},
+{"id":"sh/v654365w","kind":"textbox","name":"文本框 166","position":{"left":82.24,"top":278.51,"width":398.87,"height":25.47},"text":"核心框架：LangChain 1.x、LangGraph、","style":{"fontSize":21.07,"typeface":"微软雅黑","color":"#1B1D3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/18b6hk7m","kind":"textbox","name":"文本框 171","position":{"left":82.54,"top":314,"width":185.08,"height":24.53},"text":"CrewAI、AutoGen","style":{"fontSize":21.07,"typeface":"微软雅黑","color":"#1B1D3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/610725oz","kind":"textbox","name":"文本框 174","position":{"left":82.39,"top":357.58,"width":369.33,"height":26.6},"text":"大模型：DeepSeek、千问、通义千问","style":{"fontSize":22,"typeface":"微软雅黑","color":"#1B1D3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/byt87epo","kind":"textbox","name":"文本框 177","position":{"left":82.47,"top":401.57,"width":305.53,"height":26.6},"text":"向量数据库：Chroma、Milvus","style":{"fontSize":22,"typeface":"微软雅黑","color":"#1B1D3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/8bixsra1","kind":"textbox","name":"文本框 181","position":{"left":82.54,"top":444.59,"width":305.53,"height":26.6},"text":"向量数据库：Chroma、Milvus","style":{"fontSize":22,"typeface":"微软雅黑","color":"#1B1D3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/07idora5","kind":"textbox","name":"文本框 185","position":{"left":82.39,"top":488.73,"width":276.87,"height":29.07},"text":"知识库：Neo4j(知识图谱)","style":{"fontSize":24,"typeface":"微软雅黑","color":"#1B1D3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/twvixkb6","kind":"textbox","name":"文本框 189","position":{"left":645.54,"top":494.17,"width":105.87,"height":27.93},"text":"I 设计亮点","style":{"fontSize":23.07,"typeface":"微软雅黑","color":"#152148"},"geometry":"rect","lineWidth":0},
+{"id":"sh/rudgvat0","kind":"textbox","name":"文本框 191","position":{"left":82.47,"top":533.59,"width":292.53,"height":26.6},"text":"工具集成：N8n、Coze、Dify","style":{"fontSize":22,"typeface":"微软雅黑","color":"#1B1D3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/h4byp0by","kind":"textbox","name":"文本框 197","position":{"left":657.83,"top":538.66,"width":374.6,"height":27.93},"text":"亮点一：模块化设计,易于扩展和维护","style":{"fontSize":23.07,"typeface":"微软雅黑","color":"#1B1E3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/2hk36lc3","kind":"textbox","name":"文本框 202","position":{"left":82.47,"top":578.57,"width":363.2,"height":26.6},"text":"前后端：Streamlit、FastAPI、Vue.js","style":{"fontSize":22,"typeface":"微软雅黑","color":"#1B1D3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/sbil0rul","kind":"textbox","name":"文本框 208","position":{"left":657.83,"top":577.66,"width":374.6,"height":27.93},"text":"亮点二：多智能体协作,提高工作效率","style":{"fontSize":23.07,"typeface":"微软雅黑","color":"#1B1E3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/atwj6xsn","kind":"textbox","name":"文本框 213","position":{"left":657.83,"top":616.67,"width":397.67,"height":27.93},"text":"亮点三：人机协同,保障准确性和可靠性","style":{"fontSize":23.07,"typeface":"微软雅黑","color":"#1B1E3A"},"geometry":"rect","lineWidth":0},
+{"id":"sh/nq50bitw","kind":"textbox","name":"文本框 218","position":{"left":70.3,"top":663.91,"width":40.1,"height":22.26},"text":"35%","style":{"fontSize":20,"typeface":"微软雅黑","color":"#1C1F41"},"geometry":"rect","lineWidth":0}
+]}

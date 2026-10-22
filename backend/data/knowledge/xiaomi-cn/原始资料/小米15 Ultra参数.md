@@ -9,6 +9,12 @@ content_type: webpage_body_snapshot
 review_status: pending
 capture_sha256: 0d79da9950e0a480792c9b543c9daedbc45aa75f940b95ded5c21b56e9f9d299
 body_sha256: 63620e6d2963ba35ebb65b78d71c7a22c34983b2e1fedea5301d48e3ff2f0373
+knowledge_id: xiaomi-15-ultra-cn-specs
+brand: 小米
+goodsid: '65539'
+product_models:
+- 小米15 Ultra
+general_model: ''
 ---
 
 # 小米15 Ultra参数

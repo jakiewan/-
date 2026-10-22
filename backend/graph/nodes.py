@@ -68,7 +68,7 @@ async def recognize_intent(state: CustomerServiceState, *, model) -> dict:
                 "例如上一轮询问手机型号，本轮回答 GC A10，或者上一轮询问咨询方面、本轮回答屏幕，均延续咨询，不能归闲聊。"
                 "pending_tasks 中存在售后任务时，补充退/换/修、订单商品、原因、确认或否定该订单、取消待提交申请均归售后。"
                 "已提交售后后的重复确认也归售后；询问售后政策仍归咨询；明确的新话题优先。"
-                "仅说商品或型号（如小米15、GC A10）也属于咨询；品牌型号中的数字不能当订单号。"
+                "仅说商品或型号（如OPPO Find X9、小米15、GC A10）也属于咨询；品牌型号中的数字不能当订单号。"
                 "缺少型号、品类、订单号等业务参数不表示意图不明，这些由下游节点处理，不在这里追问。"
                 "待补knowledge任务询问品类后，本轮只回复手机，仍归咨询且needs_clarification=false，不追问具体型号。"
                 "例如我不是要退款，只想了解退款规则归咨询；我想申请退款归售后。"
@@ -250,6 +250,8 @@ async def generate_answer(state: CustomerServiceState, runtime: Runtime[UserCont
         return {"answer_candidate": state["business_result"]["message"]}
     if state["business_result"].get("kind") in ("order", "after_sales", "fixed_chitchat"):
         return {"answer_candidate": state["business_result"]["message"]}
+    if state["business_result"].get("graph_answer"):
+        return {"answer_candidate": state["business_result"]["graph_answer"]}
     if (state["business_result"].get("kind") == "knowledge" and state["evidence"]
             and all(item["kind"] == "faq" for item in state["evidence"])):
         # FAQ 直接输出已检索条款，避免模型改写政策或再索取非必要参数。

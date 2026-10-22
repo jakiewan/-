@@ -28,8 +28,8 @@ test.beforeEach(async ({ page }) => {
 
 test('输入、空白校验、按钮和回车发送、接口结果展示', async ({ page }) => {
   await page.goto('/')
-  await expect(page).toHaveTitle('某米电商智能客服')
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('某米电商智能客服')
+  await expect(page).toHaveTitle('服务通智能客服')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('服务通智能客服')
   const input = page.getByRole('textbox', { name: '输入你的问题' })
   const send = page.getByRole('button', { name: '发送' })
   const messages = page.getByRole('article')
@@ -43,11 +43,26 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await page.getByRole('heading', { level: 1 }).click()
   await expect(commonQuestions).toBeHidden()
   await input.focus()
-  await expect(commonQuestions.getByRole('button')).toHaveCount(6)
+  await expect(page.getByRole('complementary', { name: '服务导航' })).toBeVisible()
+  await expect(page.getByText('场景示例', { exact: true })).toHaveCount(0)
+  await expect(commonQuestions.getByRole('button')).toHaveCount(11)
   await commonQuestions.getByRole('button', { name: '小米手机保修多久？', exact: true }).click()
   await expect(input).toHaveValue('小米手机保修多久？')
   await expect(input).toBeFocused()
   await expect(commonQuestions).toBeHidden()
+  await expect(messages).toHaveCount(1)
+  for (const question of [
+    '我要投诉，小米15 手机的售后问题一直没有人处理',
+    '我要申请蓝牙耳机维修，原因是无法开机。',
+    '帮我查询最近一笔订单的物流状态。',
+    '小米15 手机的问题我想找真人处理，请帮我转人工客服',
+    '你好，我是 小米 手机用户，来打个招呼',
+  ]) {
+    await input.fill('')
+    await commonQuestions.getByRole('button', { name: question, exact: true }).click()
+    await expect(input).toHaveValue(question)
+    await expect(input).toBeFocused()
+  }
   await expect(messages).toHaveCount(1)
   await input.fill('   ')
   await expect(commonQuestions).toBeVisible()
@@ -64,6 +79,7 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await expect(messages).toHaveCount(3)
   await expect(messages.nth(1)).toContainText('如何查询订单？')
   await expect(messages.nth(2)).toContainText('测试客服回复')
+  await messages.nth(2).locator('.stream-progress summary').click()
   await expect(messages.nth(2)).toContainText('识别意图：咨询')
   await expect(messages.nth(2)).toContainText('意图来源：LLM')
   await expect(messages.nth(2)).not.toContainText('BERT 分类')
@@ -82,6 +98,9 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await input.fill('退货怎么办？')
   await input.press('Enter')
   await expect(messages).toHaveCount(5)
+  await expect(commonQuestions).toBeHidden()
+  await input.click()
+  await expect(commonQuestions).toBeVisible()
 
   await input.fill('中文输入中')
   await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true })
@@ -168,7 +187,7 @@ test('登录接口无响应时退出加载状态，并允许恢复后重试登�
   await page.route('**/api/auth/login', () => {})
   await page.goto('/')
   await expect(page.getByRole('status')).toHaveText('正在读取登录状态…')
-  await expect(page.getByRole('heading', { name: '登录某米电商智能客服' })).toBeVisible({ timeout: 12000 })
+  await expect(page.getByRole('heading', { name: '登录服务通智能客服' })).toBeVisible({ timeout: 12000 })
   await expect(page.getByRole('alert')).toContainText('读取登录状态超时')
 
   await page.getByLabel('账号', { exact: true }).fill('test-user')

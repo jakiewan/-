@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
         min_size=1,
         max_size=5,
         open=False,
+        check=AsyncConnectionPool.check_connection,
         kwargs={
             "autocommit": True,
             "row_factory": dict_row,

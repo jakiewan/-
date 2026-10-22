@@ -37,6 +37,7 @@ class FaqRetriever:
         self.document_collection = os.getenv("RAG_DOCUMENT_COLLECTION", DOCUMENT_COLLECTION)
         self.document_prefix = os.getenv("RAG_DOCUMENT_PREFIX", DOCUMENT_PREFIX)
         self.milvus = None
+        self.phone_graph = None
         self.redis = redis.Redis.from_url(
             os.getenv("RAG_REDIS_URL", "redis://127.0.0.1:56379/0"),
             decode_responses=True, socket_timeout=3, socket_connect_timeout=3,
@@ -71,6 +72,13 @@ class FaqRetriever:
         except Exception:
             self.close()
             raise
+        if os.getenv("RAG_NEO4J_URI"):
+            try:
+                from .phone_graph import PhoneGraph
+
+                self.phone_graph = PhoneGraph()
+            except Exception as exc:
+                logger.warning("手机关系检索初始化失败，保留原知识检索：%s", type(exc).__name__)
 
     def _check_embedding_signature(self):
         meta = json.loads(self.redis.get(f"{self.faq_prefix}:meta") or "{}")
@@ -96,7 +104,7 @@ class FaqRetriever:
                     + (f' and (brand == "" or brand == {json.dumps(brand, ensure_ascii=False)})'
                        if brand and self.faq_has_brand else "")),
             output_fields=["faq_item_id", "text"],
-            search_params={"metric_type": "COSINE"}, timeout=5,
+            search_params={"metric_type": "COSINE"}, consistency_level="Strong", timeout=5,
         )[0]
         candidates = [{"faq_item_id": hit["entity"]["faq_item_id"], "question": hit["entity"]["text"],
                        "score": float(hit["distance"])} for hit in hits]
@@ -173,7 +181,7 @@ class FaqRetriever:
             ranker=WeightedRanker(0.5, 0.5, norm_score=True),
             limit=int(os.getenv("RAG_HYBRID_TOP_K", "10")),
             output_fields=["document_id", "version", "product_model"],
-            timeout=5,
+            consistency_level="Strong", timeout=5,
         )[0]
         evidence = []
         for hit in hits:
@@ -214,6 +222,8 @@ class FaqRetriever:
 
     def close(self):
         try:
+            if self.phone_graph is not None:
+                self.phone_graph.close()
             if self.milvus is not None:
                 self.milvus.close()
         finally:

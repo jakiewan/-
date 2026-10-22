@@ -9,6 +9,12 @@ content_type: webpage_body_snapshot
 review_status: pending
 capture_sha256: 2fd504e63a15273e50892a29299e1e69efd610332ad16ea4341870dbc6883363
 body_sha256: f55ae288183a7cf123f7e4b04155b2f6a72f15e1be6dba9646f8aa875154c231
+knowledge_id: xiaomi-15-pro-cn-specs
+brand: 小米
+goodsid: '65539'
+product_models:
+- 小米15 Pro
+general_model: ''
 ---
 
 # 小米15 Pro参数

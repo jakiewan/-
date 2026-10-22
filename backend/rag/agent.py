@@ -11,6 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
 from .models import fuse_evidence
+from .phone_graph import PhoneGraphQuery
 from .retriever import CATEGORIES
 
 logger = logging.getLogger(__name__)
@@ -22,12 +23,12 @@ class PreparedQuery(BaseModel):
     goodsid: Literal["", "65539", "65540", "65541", "65542", "65543"] = ""
     product_model: str = ""
     product_models: list[str] = Field(default_factory=list, description="比较多个具体型号时逐项列出全部型号；不把比较问题当成缺少单一型号")
-    brand: str = Field(default="", description="用户明确的品牌，例如小米、苹果、GC；未知为空")
-    other_brand_requested: bool = Field(description="实际咨询或比较对象包含其他真实品牌时为true；只是说不是苹果而是小米时为false")
+    brand: str = Field(default="", description="用户实际问到的品牌，例如小米、OPPO、华为、苹果；用户没说品牌就留空")
     market: Literal["", "CN", "OTHER"] = Field(default="", description="明确国行/中国大陆为CN，港版、海外版等为OTHER；未说明为空，不根据英文型号猜地区")
     sales_channel: Literal["", "MALL", "DIRECT", "AUTHORIZED"] = ""
     has_question: bool = Field(description="用户是否明确提供咨询方面；我想了解GC A10、仅型号或仅纠正型号都不能擅自当成参数概览")
     requires_model: bool = Field(description="参数、功能、兼容性等需要具体型号；通用品类政策或故障排查为 false")
+    phone_graph: PhoneGraphQuery | None = Field(default=None, description="仅用于已完整表达的手机参数关系查询；普通问答和政策为null")
 
 
 class RagState(TypedDict):
@@ -62,11 +63,24 @@ def build_rag_pipeline(model, retriever):
                     "品类映射：" + json.dumps(CATEGORIES, ensure_ascii=False) + "。"
                     "已接入型号：" + json.dumps(meta.get("models", []), ensure_ascii=False) + "。"
                     "未知型号照用户原样保留，不能换成目录已有型号；目录不代表用户购买事实。"
+                    "phone_graph仅处理手机型号参数关系：compare比较差异，shared查询共同参数，filter按全部条件筛选，related查询与一个参照型号具有相同参数的其他手机。"
+                    "例如与小米15使用同款处理器的手机有哪些：mode=related，parameters=[处理器]，product_models=[小米15]；"
+                    "同品牌关系用品牌参数；不要根据型号名字猜系列、代际或硬件兼容关系。"
+                    "普通单型号参数、政策、售后、故障、充电持续功率与兼容性仍为null。"
+                    "只有全部诉求均能用phone_graph列举的参数和条件表达时才填写；不支持的参数或排序诉求为null，不能丢条件。"
+                    "参数单位固定：电池mAh，充电W，尺寸英寸，刷新率Hz；数值条件value只填数值，不能附单位。"
+                    "至少6000mAh为gte 6000，超过6000为gt 6000；多个筛选条件全部放进filters，不能漏掉否定或上限。"
+                    "电池容量不能等同实际续航，充电功率不能等同充满时间，不能用参数替代这些诉求。"
+                    "例如小米哪些手机电池至少6000mAh且无线充电至少50W：mode=filter，parameters列出电池容量和无线充电功率，"
+                    "filters包含这两个gte条件，不需要用户再选择单一型号。"
+                    "比较或共同参数时列全product_models；筛选未限定具体型号时product_model和product_models留空，不继承历史单一型号。"
                     "比较小米15和小米15 Pro电池时，product_models列出这两个型号，咨询内容已明确，不询问选择哪一个。"
                     "market必须依据用户说明：港版小米15为OTHER，即使目录只有国行也不能改成CN；未说明地区则为空。"
                     "只提取用户明确提供或确认的条件，不从助手猜测、建议或无关追问中提取。"
-                    "苹果手机能按小米政策办理：实际对象是苹果，other_brand_requested=true；"
-                    "不是苹果，我问小米15参数：实际对象是小米，other_brand_requested=false。"
+                    "当前已接入真实资料的 brands：" + json.dumps(meta.get("brands", []), ensure_ascii=False)
+                    + "，问到这些品牌时按目录型号匹配，不要当成未接入品牌。"
+                    "brand 填用户实际问到的品牌，不是被否定或比较的那个："
+                    "苹果手机能按小米政策办理 → brand=苹果；不是苹果，我问小米15参数 → brand=小米。"
                     "每轮保留同一需求已经确认的品类和型号。型号纠正时替换型号，保留仍适用的咨询内容。"
                     "明确换个问题、取消或独立新商品诉求时 continues_task=false，不继承旧商品和旧主题；"
                     "同一商品换咨询方面仍为true，不因为问题内容变化就清空商品条件。"
@@ -137,15 +151,24 @@ def build_rag_pipeline(model, retriever):
             known_model = prepared["product_model"]
             if not prepared["goodsid"]:
                 prepared["goodsid"] = meta.get("model_goodsids", {}).get(known_model, "")
-            prepared["brand"] = meta.get("model_brands", {}).get(known_model) or prepared["brand"]
-            brand_aliases = {"苹果": ("苹果", "iphone", "apple"), "华为": ("华为", "huawei"),
-                             "三星": ("三星", "samsung"), "荣耀": ("荣耀", "honor"),
-                             "OPPO": ("oppo",), "vivo": ("vivo",)}
-            other_brands = [brand for brand, aliases in brand_aliases.items()
-                            if any(alias in state["question"].lower() for alias in aliases)]
-            requested_other = bool(other_brands) and (not explicit or prepared["other_brand_requested"])
+            model_brands = meta.get("model_brands", {})
+            prepared["brand"] = model_brands.get(known_model) or prepared["brand"]
+            # 已接入的品牌以索引目录为准：目录里的品牌按已接入处理，问到未接入的品牌才说明无法核实。
+            connected = list(meta.get("brands") or sorted(model_brands.values()))
+            brand_aliases = {"小米": ("小米", "xiaomi"), "OPPO": ("oppo",), "华为": ("华为", "huawei"),
+                             "苹果": ("苹果", "iphone", "apple"), "三星": ("三星", "samsung"),
+                             "荣耀": ("荣耀", "honor"), "vivo": ("vivo",)}
+            mentioned = [brand for brand, aliases in brand_aliases.items()
+                         if any(alias in state["question"].lower() for alias in aliases)]
+            unsupported_brand = next((brand for brand in mentioned if brand not in connected), "")
+            # 用户点名了已接入型号时以型号品牌为准，否则取问句里出现过的已接入品牌。
+            target_brand = model_brands.get(known_model) or next(
+                (brand for brand in mentioned if brand in connected), "")
+            requested_other = bool(unsupported_brand) and known_model not in model_brands
             if requested_other:
-                prepared["brand"] = other_brands[0]
+                prepared["brand"] = unsupported_brand
+            elif target_brand:
+                prepared["brand"] = target_brand
             prepared["query"] = prepared["query"].strip() or state["question"]
             category = next((key for key, label in CATEGORIES.items() if label == state["question"].strip()), "")
             if category:
@@ -161,14 +184,37 @@ def build_rag_pipeline(model, retriever):
             if prepared["market"] == "OTHER":
                 result = {"status": "unsupported", "message": "当前知识库接入的是中国大陆版本资料，尚未接入港版或其他海外版本，无法核实对应参数及政策，不能直接套用国行数据。"}
             elif requested_other:
-                result = {"status": "unsupported", "message": "当前接入的真实手机资料和政策来自小米中国大陆官网，无法核实其他品牌的参数及权益，不能直接套用小米三包政策。"}
+                result = {"status": "unsupported", "message": "当前接入的真实手机资料和政策来自"
+                           + "、".join(connected) + "中国大陆官网，无法核实其他品牌的参数及权益，"
+                           "不能直接套用其他品牌的三包政策。"}
             return {"prepared": prepared, "result": result}
         except Exception as exc:
             logger.warning("RAG rewrite failed: %s", type(exc).__name__)
             return {"failed": True}
 
     def after_rewrite(state: RagState):
-        return "rag_result" if state.get("failed") or state.get("result") else "faq_search"
+        if state.get("failed") or state.get("result"):
+            return "rag_result"
+        return "phone_graph_search" if state["prepared"].get("phone_graph") else "faq_search"
+
+    async def phone_graph_search(state: RagState):
+        query = state["prepared"]
+        graph = getattr(retriever, "phone_graph", None)
+        if graph is not None:
+            try:
+                result = await asyncio.to_thread(
+                    graph.search, PhoneGraphQuery.model_validate(query["phone_graph"]),
+                    models=query["product_models"] or ([query["product_model"]] if query["product_model"] else []),
+                    brand=query["brand"],
+                )
+                if result is not None:
+                    return {"result": result, "evidence": result["evidence"]}
+            except Exception as exc:
+                logger.warning("Phone graph failed, using document RAG: %s", type(exc).__name__)
+        return {}
+
+    def after_phone_graph(state: RagState):
+        return "rag_result" if state["result"].get("graph_answer") else "faq_search"
 
     async def faq_search(state: RagState):
         query = state["prepared"]
@@ -196,7 +242,10 @@ def build_rag_pipeline(model, retriever):
                 return {"result": {"status": "needs_info", "missing_field": "product_model",
                                    "message": "请问您要咨询哪个具体型号？"}}
             meta = await asyncio.to_thread(retriever.document_meta)
-            general = meta.get("general_models", {}).get(query["brand"] or "小米", "") if query["goodsid"] == "65539" else ""
+            general_models = meta.get("general_models", {})
+            # 用户没指明品牌时按已接入品牌顺序取通用品类资料，不套用没问到的品牌政策。
+            brand = query["brand"] or next((name for name in meta.get("brands", []) if name in general_models), "")
+            general = general_models.get(brand, "") if query["goodsid"] == "65539" else ""
             if not general:
                 return {"result": {"status": "no_match"}}
         else:
@@ -293,6 +342,8 @@ def build_rag_pipeline(model, retriever):
             ))
             output["business_result"] = {"status": "ok", "kind": "knowledge", "requested_models": query.get("product_models", []),
                                          "simulated": any(item["simulated"] for item in evidence)}
+            if result.get("graph_answer"):
+                output["business_result"]["graph_answer"] = result["graph_answer"]
         else:
             message = result.get("message") or (
                 f"型号 {query.get('product_model', '')} 的资料暂未接入知识库，暂时无法核实其参数，请以官方商品资料或客服确认为准。"
@@ -304,14 +355,15 @@ def build_rag_pipeline(model, retriever):
 
     builder = StateGraph(RagState)
     for name, node in (
-        ("rag_rewrite", rag_rewrite), ("faq_search", faq_search),
+        ("rag_rewrite", rag_rewrite), ("phone_graph_search", phone_graph_search), ("faq_search", faq_search),
         ("document_search", document_search), ("hyde_generate", hyde_generate),
         ("hyde_search", hyde_search), ("rrf_fusion", rrf_fusion),
         ("rag_rerank", rag_rerank), ("rag_result", rag_result),
     ):
         builder.add_node(name, node)
     builder.add_edge(START, "rag_rewrite")
-    builder.add_conditional_edges("rag_rewrite", after_rewrite, ["faq_search", "rag_result"])
+    builder.add_conditional_edges("rag_rewrite", after_rewrite, ["phone_graph_search", "faq_search", "rag_result"])
+    builder.add_conditional_edges("phone_graph_search", after_phone_graph, ["faq_search", "rag_result"])
     builder.add_conditional_edges("faq_search", after_faq, ["document_search", "rag_result"])
     builder.add_conditional_edges("document_search", after_documents, ["hyde_generate", "rag_result"])
     builder.add_conditional_edges("hyde_generate", after_stage, ["hyde_search", "rag_result"])
