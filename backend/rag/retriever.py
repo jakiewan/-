@@ -14,7 +14,8 @@ from .models import HYBRID_SIGNATURE, encode_hybrid, relevance_scores, rerank_ev
 
 CATEGORIES = {"65539": "手机", "65540": "电脑", "65541": "空调", "65542": "冰箱", "65543": "洗衣机"}
 CHANNELS = ("MALL", "DIRECT", "AUTHORIZED")
-COLLECTION = "faq_question"
+COLLECTION = "customer_graph_faq_official_v1"
+FAQ_PREFIX = "customer_graph:faq:official:v1"
 MODEL = "BAAI/bge-m3"
 EMBEDDING_SIGNATURE = f"huggingface:{MODEL}:1024"
 # shortcut: 沿用旧 FAQ 的初始阈值；扩充知识或出现误召回时重新校准，分数不是正确率。
@@ -32,7 +33,7 @@ class FaqRetriever:
         load_dotenv(PROJECT_ROOT / ".env")
         self._embedding_lock = Lock()
         self.faq_collection = os.getenv("RAG_FAQ_COLLECTION", COLLECTION)
-        self.faq_prefix = os.getenv("RAG_FAQ_PREFIX", "gc:faq")
+        self.faq_prefix = os.getenv("RAG_FAQ_PREFIX", FAQ_PREFIX)
         self.document_collection = os.getenv("RAG_DOCUMENT_COLLECTION", DOCUMENT_COLLECTION)
         self.document_prefix = os.getenv("RAG_DOCUMENT_PREFIX", DOCUMENT_PREFIX)
         self.milvus = None
