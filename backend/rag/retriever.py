@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from pymilvus import AnnSearchRequest, MilvusClient, WeightedRanker
 
 from ..common.constants import PROJECT_ROOT
-from .models import HYBRID_SIGNATURE, encode_hybrid, rerank_evidence
+from .models import HYBRID_SIGNATURE, encode_hybrid, relevance_scores, rerank_evidence
 
 CATEGORIES = {"65539": "手机", "65540": "电脑", "65541": "空调", "65542": "冰箱", "65543": "洗衣机"}
 CHANNELS = ("MALL", "DIRECT", "AUTHORIZED")
@@ -31,6 +31,8 @@ class FaqRetriever:
     def __init__(self):
         load_dotenv(PROJECT_ROOT / ".env")
         self._embedding_lock = Lock()
+        self.faq_collection = os.getenv("RAG_FAQ_COLLECTION", COLLECTION)
+        self.faq_prefix = os.getenv("RAG_FAQ_PREFIX", "gc:faq")
         self.document_collection = os.getenv("RAG_DOCUMENT_COLLECTION", DOCUMENT_COLLECTION)
         self.document_prefix = os.getenv("RAG_DOCUMENT_PREFIX", DOCUMENT_PREFIX)
         self.milvus = None
@@ -44,14 +46,15 @@ class FaqRetriever:
                 uri=os.getenv("RAG_MILVUS_URI", "http://127.0.0.1:19530"),
                 db_name=os.getenv("RAG_MILVUS_DB", "ai_customer_service"), timeout=5,
             )
-            schema = self.milvus.describe_collection(COLLECTION)
+            schema = self.milvus.describe_collection(self.faq_collection)
             fields = {field["name"]: field for field in schema["fields"]}
             if not {"faq_item_id", "text", "goodsids", "sales_channels", "vector"} <= fields.keys():
                 raise RuntimeError("FAQ 集合字段不兼容")
             if int(fields["vector"]["params"]["dim"]) != 1024:
                 raise RuntimeError("FAQ 集合向量维度与 BGE-M3 不一致")
-            indexes = [self.milvus.describe_index(COLLECTION, name)
-                       for name in self.milvus.list_indexes(COLLECTION)]
+            self.faq_has_brand = "brand" in fields
+            indexes = [self.milvus.describe_index(self.faq_collection, name)
+                       for name in self.milvus.list_indexes(self.faq_collection)]
             if not any(index.get("field_name") == "vector" and index.get("metric_type") == "COSINE"
                        for index in indexes):
                 raise RuntimeError("FAQ 集合缺少 COSINE 向量索引")
@@ -69,11 +72,11 @@ class FaqRetriever:
             raise
 
     def _check_embedding_signature(self):
-        meta = json.loads(self.redis.get("gc:faq:meta") or "{}")
+        meta = json.loads(self.redis.get(f"{self.faq_prefix}:meta") or "{}")
         if not isinstance(meta, dict) or meta.get("embedding") != EMBEDDING_SIGNATURE:
             raise RuntimeError("FAQ 数据缺失或入库模型与 BGE-M3 不一致")
 
-    def search(self, query: str, *, goodsid: str = "", sales_channel: str = "MALL") -> dict:
+    def search(self, query: str, *, goodsid: str = "", sales_channel: str = "MALL", brand: str = "") -> dict:
         """品类未知时先匹配候选；命中后补品类，不读取任意品类的答案。"""
         if not isinstance(query, str) or not query.strip():
             raise ValueError("检索问题不能为空")
@@ -86,33 +89,47 @@ class FaqRetriever:
             raise RuntimeError("查询向量维度与 FAQ 集合不一致")
         # 过滤值只来自上面的白名单，不拼接用户问题。
         hits = self.milvus.search(
-            collection_name=COLLECTION, data=[vector], limit=10,
+            collection_name=self.faq_collection, data=[vector], limit=20 if self.faq_has_brand else 10,
             filter=(f'ARRAY_CONTAINS(sales_channels, "{sales_channel}")'
-                    + (f' and ARRAY_CONTAINS(goodsids, "{goodsid}")' if goodsid else "")),
+                    + (f' and ARRAY_CONTAINS(goodsids, "{goodsid}")' if goodsid else "")
+                    + (f' and (brand == "" or brand == {json.dumps(brand, ensure_ascii=False)})'
+                       if brand and self.faq_has_brand else "")),
             output_fields=["faq_item_id", "text"],
             search_params={"metric_type": "COSINE"}, timeout=5,
         )[0]
+        candidates = [{"faq_item_id": hit["entity"]["faq_item_id"], "question": hit["entity"]["text"],
+                       "score": float(hit["distance"])} for hit in hits]
+        if self.faq_has_brand:
+            candidates = [item for item in candidates if item["score"] >= MIN_SCORE]
+            with self._embedding_lock:
+                scores = relevance_scores(query, [item["question"] for item in candidates])
+            candidates = [{**item, "match_score": score} for item, score in zip(candidates, scores)]
+        margin_key, margin = ("match_score", 0.5) if self.faq_has_brand else ("score", MIN_MARGIN)
         best = {}
-        for hit in hits:
-            item_id = hit["entity"]["faq_item_id"]
-            score = float(hit["distance"])
-            if item_id not in best or score > best[item_id]["score"]:
-                best[item_id] = {"faq_item_id": item_id, "question": hit["entity"]["text"], "score": score}
-        ranked = sorted(best.values(), key=lambda item: item["score"], reverse=True)
+        for item in candidates:
+            item_id = item["faq_item_id"]
+            if item_id not in best or item[margin_key] > best[item_id][margin_key]:
+                best[item_id] = item
+        ranked = sorted(best.values(), key=lambda item: item[margin_key], reverse=True)
         if not ranked or ranked[0]["score"] < MIN_SCORE:
             return {"status": "no_match", "evidence": [], "candidates": []}
-        if len(ranked) > 1 and ranked[0]["score"] - ranked[1]["score"] < MIN_MARGIN:
-            return {"status": "ambiguous", "evidence": [], "candidates": ranked[:2]}
+        if self.faq_has_brand:
+            logger.info("FAQ relevance ids=%s scores=%s", [item["faq_item_id"] for item in ranked],
+                        [round(item["match_score"], 4) for item in ranked])
+            if ranked[0]["match_score"] < 0:
+                return {"status": "no_match", "evidence": [], "candidates": []}
         if not goodsid:
             return {"status": "needs_info", "missing_field": "goodsid", "evidence": [], "candidates": ranked[:1]}
+        if len(ranked) > 1 and ranked[0][margin_key] - ranked[1][margin_key] < margin:
+            return {"status": "ambiguous", "evidence": [], "candidates": ranked[:2]}
 
         match = ranked[0]
         item_id = match["faq_item_id"]
-        prefix = f"gc:faq:version:{item_id}:{goodsid}:{sales_channel}"
+        prefix = f"{self.faq_prefix}:version:{item_id}:{goodsid}:{sales_channel}"
         version = self.redis.get(prefix)
         if not version:
             raise RuntimeError("命中 FAQ，但对应答案版本缺失")
-        raw = self.redis.get(f"gc:faq:answer:{item_id}:{goodsid}:{sales_channel}:{version}")
+        raw = self.redis.get(f"{self.faq_prefix}:answer:{item_id}:{goodsid}:{sales_channel}:{version}")
         answer = json.loads(raw or "null")
         expected = {"faq_item_id": item_id, "goodsid": goodsid, "sales_channel": sales_channel,
                     "market": "CN", "language": "zh-CN", "version": version}
@@ -127,22 +144,23 @@ class FaqRetriever:
                     "excerpt": answer["answer"], "kind": "faq",
                     "simulated": answer.get("simulated") is not False,
                     "approved": answer.get("approved") is True}
-        logger.info("FAQ read collection=%s faq=%s redis_version=%s score=%.4f", COLLECTION, item_id, version, match["score"])
+        logger.info("FAQ read collection=%s faq=%s redis_version=%s score=%.4f", self.faq_collection, item_id, version, match["score"])
         return {"status": "ok", "evidence": [evidence], "candidates": []}
 
-    def search_documents(self, query: str, *, product_model: str) -> dict:
+    def search_documents(self, query: str, *, product_model: str | list[str]) -> dict:
         """沿用 04-rag 的 dense/sparse 混合召回，读取本项目的版本化正文。"""
         if not isinstance(query, str) or not query.strip():
             raise ValueError("检索问题不能为空")
         meta = self.document_meta()
         if meta.get("embedding") != HYBRID_SIGNATURE:
             raise RuntimeError("文档知识尚未入库或模型不一致")
-        if product_model not in meta.get("models", []):
+        requested = [product_model] if isinstance(product_model, str) else product_model
+        if any(name not in meta.get("models", []) for name in requested):
             # 型号未接入是确定性结论，改写查询也不会命中，直接给出型号。
             return {"status": "no_model", "product_model": product_model, "evidence": [], "candidates": []}
         with self._embedding_lock:
             vectors = encode_hybrid([query.strip()])
-        expr = f"product_model == {json.dumps(product_model, ensure_ascii=False)}"
+        expr = f"product_model in {json.dumps(requested, ensure_ascii=False)}"
         top_k = int(os.getenv("RAG_SEARCH_TOP_K", "20"))
         requests = [
             AnnSearchRequest(data=[vectors[kind][0]], anns_field=f"{kind}_vector",
@@ -153,7 +171,7 @@ class FaqRetriever:
             collection_name=self.document_collection, reqs=requests,
             ranker=WeightedRanker(0.5, 0.5, norm_score=True),
             limit=int(os.getenv("RAG_HYBRID_TOP_K", "10")),
-            output_fields=["document_id", "version"],
+            output_fields=["document_id", "version", "product_model"],
             timeout=5,
         )[0]
         evidence = []
@@ -166,14 +184,14 @@ class FaqRetriever:
                 raise RuntimeError("文档向量存在但 Redis 正文缺失")
             metadata = payload["metadata"]
             if (payload.get("id") != document_id or metadata.get("version") != version
-                    or metadata.get("product_model") != product_model
+                    or metadata.get("product_model") != entity["product_model"] or entity["product_model"] not in requested
                     or metadata.get("market") != "CN" or metadata.get("language") != "zh-CN"
                     or not payload.get("page_content")):
                 raise RuntimeError("文档正文版本或适用范围不一致")
             evidence.append({
                 "evidence_id": f"document:{document_id}:{version}", "kind": "document",
                 "title": metadata["title"], "version": version, "source": metadata.get("source", document_id),
-                "product_model": product_model, "excerpt": payload["page_content"],
+                "product_model": entity["product_model"], "excerpt": payload["page_content"],
                 "hybrid_score": float(hit["distance"]),
                 "simulated": metadata.get("simulated") is not False,
                 "approved": metadata.get("approved") is True,
@@ -185,9 +203,9 @@ class FaqRetriever:
     def document_meta(self):
         return json.loads(self.redis.get(f"{self.document_prefix}:meta") or "{}")
 
-    def rerank(self, query, evidence):
+    def rerank(self, query, evidence, product_models=()):
         with self._embedding_lock:
-            selected = rerank_evidence(query, evidence)
+            selected = rerank_evidence(query, evidence, product_models)
         logger.info("Document rerank candidates=%s selected=%s scores=%s", len(evidence),
                     [item["evidence_id"] for item in selected],
                     [round(item["rerank_score"], 4) for item in selected])

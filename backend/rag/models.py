@@ -58,14 +58,19 @@ def fuse_evidence(original, hyde, *, k=60, limit=10):
     return [{**items[key], "rrf_score": scores[key]} for key in keys]
 
 
-def rerank_evidence(query, evidence):
-    if not evidence:
+def relevance_scores(query, texts):
+    if not texts:
         return []
     scores = reranker_model().compute_score(
-        [[query, item["excerpt"]] for item in evidence], batch_size=8,
+        [[query, text] for text in texts], batch_size=8,
     )
     if isinstance(scores, (int, float)):
         scores = [scores]
+    return [float(score) for score in scores]
+
+
+def rerank_evidence(query, evidence, product_models=()):
+    scores = relevance_scores(query, [item["excerpt"] for item in evidence])
     ranked = sorted(
         [{**item, "rerank_score": float(score)} for item, score in zip(evidence, scores)],
         key=lambda item: item["rerank_score"], reverse=True,
@@ -75,18 +80,25 @@ def rerank_evidence(query, evidence):
     limit = int(os.getenv("RAG_FINAL_TOP_K", "5"))
     gap_abs = float(os.getenv("RAG_RERANK_GAP_ABS", "0.5"))
     gap_ratio = float(os.getenv("RAG_RERANK_GAP_RATIO", "0.25"))
+    groups = [[item for item in ranked if item["product_model"] == name] for name in product_models] if len(product_models) > 1 else [ranked]
+    per_model = max(1, limit // len(groups))
     budget, selected = 8000, []
-    for index, item in enumerate(ranked):
-        if item["rerank_score"] < minimum:
-            break
-        if len(item["excerpt"]) > budget:
-            continue
-        selected.append(item)
-        budget -= len(item["excerpt"])
+    for group in groups:
+        kept = 0
+        for index, item in enumerate(group):
+            if item["rerank_score"] < minimum:
+                break
+            if len(item["excerpt"]) > budget:
+                continue
+            selected.append(item)
+            budget -= len(item["excerpt"])
+            kept += 1
+            if kept >= per_model or len(selected) >= limit:
+                break
+            if index + 1 < len(group):
+                gap = item["rerank_score"] - group[index + 1]["rerank_score"]
+                if gap >= gap_abs or gap / (abs(item["rerank_score"]) + 1e-6) >= gap_ratio:
+                    break
         if len(selected) >= limit:
             break
-        if index + 1 < len(ranked):
-            gap = item["rerank_score"] - ranked[index + 1]["rerank_score"]
-            if gap >= gap_abs or gap / (abs(item["rerank_score"]) + 1e-6) >= gap_ratio:
-                break
     return selected

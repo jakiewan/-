@@ -96,6 +96,15 @@ def ingest(retriever, rows):
     retriever.redis.set(f"{prefix}:meta", json.dumps({
         "embedding": HYBRID_SIGNATURE,
         "models": sorted(set(existing.get("models", [])) | {r["metadata"]["product_model"] for r in rows}),
+        "model_goodsids": {**existing.get("model_goodsids", {}),
+                           **{r["metadata"]["product_model"]: r["metadata"]["goodsid"]
+                              for r in rows if r["metadata"].get("goodsid")}},
+        "model_brands": {**existing.get("model_brands", {}),
+                         **{r["metadata"]["product_model"]: r["metadata"]["brand"]
+                            for r in rows if r["metadata"].get("brand")}},
+        "general_models": {**existing.get("general_models", {}),
+                           **{r["metadata"]["brand"]: r["metadata"]["product_model"]
+                              for r in rows if r["metadata"].get("general")}},
         "count": client.query(collection, filter="", output_fields=["count(*)"])[0]["count(*)"],
     }))
     print("文档双向量与 Redis 正文导入完成")

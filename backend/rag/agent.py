@@ -21,6 +21,9 @@ class PreparedQuery(BaseModel):
     continues_task: bool = Field(description="本轮补参、纠正或指代追问为 true，独立新话题为 false")
     goodsid: Literal["", "65539", "65540", "65541", "65542", "65543"] = ""
     product_model: str = ""
+    product_models: list[str] = Field(default_factory=list, description="比较多个具体型号时逐项列出全部型号；不把比较问题当成缺少单一型号")
+    brand: str = Field(default="", description="用户明确的品牌，例如小米、苹果、GC；未知为空")
+    market: Literal["", "CN", "OTHER"] = Field(default="", description="明确国行/中国大陆为CN，港版、海外版等为OTHER；未说明为空，不根据英文型号猜地区")
     sales_channel: Literal["", "MALL", "DIRECT", "AUTHORIZED"] = ""
     has_question: bool = Field(description="用户是否明确提供咨询方面；我想了解GC A10、仅型号或仅纠正型号都不能擅自当成参数概览")
     requires_model: bool = Field(description="参数、功能、兼容性等需要具体型号；通用品类政策或故障排查为 false")
@@ -33,6 +36,7 @@ class RagState(TypedDict):
     prepared: dict
     result: dict
     original: list[dict]
+    lookup_model: str | list[str]
     hyde_query: str
     expanded: list[dict]
     evidence: list[dict]
@@ -57,6 +61,8 @@ def build_rag_pipeline(model, retriever):
                     "品类映射：" + json.dumps(CATEGORIES, ensure_ascii=False) + "。"
                     "已接入型号：" + json.dumps(meta.get("models", []), ensure_ascii=False) + "。"
                     "未知型号照用户原样保留，不能换成目录已有型号；目录不代表用户购买事实。"
+                    "比较小米15和小米15 Pro电池时，product_models列出这两个型号，咨询内容已明确，不询问选择哪一个。"
+                    "market必须依据用户说明：港版小米15为OTHER，即使目录只有国行也不能改成CN；未说明地区则为空。"
                     "只提取用户明确提供或确认的条件，不从助手猜测、建议或无关追问中提取。"
                     "每轮保留同一需求已经确认的品类和型号。型号纠正时替换型号，保留仍适用的咨询内容。"
                     "明确换个问题、取消或独立新需求时 continues_task=false，不继承旧商品和旧主题。"
@@ -81,7 +87,7 @@ def build_rag_pipeline(model, retriever):
             ])
             prepared = parser.parse(response.text).model_dump()
             previous = state["pending"].get("slots", {}) if prepared["continues_task"] else {}
-            for field in ("goodsid", "product_model", "sales_channel"):
+            for field in ("goodsid", "product_model", "sales_channel", "brand"):
                 prepared[field] = prepared[field].strip() or previous.get(field, "")
             user_context = state["question"]
             if prepared["continues_task"]:
@@ -96,8 +102,38 @@ def build_rag_pipeline(model, retriever):
                 prepared["goodsid"] = previous.get("goodsid", "")
             model_context = user_context + (state["history"] if prepared["continues_task"] else "")
             model_context += previous.get("product_model", "")
-            if prepared["product_model"].replace(" ", "").lower() not in model_context.replace(" ", "").lower():
+            normalize = lambda value: value.replace(" ", "").lower().replace("xiaomi", "小米")
+            if normalize(prepared["product_model"]) not in normalize(model_context):
                 prepared["product_model"] = previous.get("product_model", "")
+            if normalize(prepared["brand"]) not in normalize(model_context):
+                prepared["brand"] = previous.get("brand", "")
+            known_models = {normalize(name): name for name in meta.get("models", [])}
+            prepared["product_model"] = known_models.get(normalize(prepared["product_model"]), prepared["product_model"])
+            targets = [known_models.get(normalize(name), name.strip()) for name in prepared["product_models"]
+                       if name.strip() and normalize(name) in normalize(model_context)]
+            prepared["product_models"] = list(dict.fromkeys(targets))
+            if targets:
+                prepared["product_model"] = targets[0]
+            # 从可信目录恢复用户明确写出的型号，补足模型在政策问题中漏抽的参数。
+            remaining, explicit = normalize(state["question"]), []
+            for name in sorted(known_models, key=len, reverse=True):
+                if name and name in remaining:
+                    explicit.append(known_models[name])
+                    remaining = remaining.replace(name, "")
+            if len(explicit) == 1 and len(targets) <= 1:
+                prepared["product_model"] = explicit[0]
+                prepared["product_models"] = explicit
+            known_model = prepared["product_model"]
+            if not prepared["goodsid"]:
+                prepared["goodsid"] = meta.get("model_goodsids", {}).get(known_model, "")
+            prepared["brand"] = meta.get("model_brands", {}).get(known_model) or prepared["brand"]
+            brand_aliases = {"苹果": ("苹果", "iphone", "apple"), "华为": ("华为", "huawei"),
+                             "三星": ("三星", "samsung"), "荣耀": ("荣耀", "honor"),
+                             "OPPO": ("oppo",), "vivo": ("vivo",)}
+            other_brands = [brand for brand, aliases in brand_aliases.items()
+                            if any(alias in state["question"].lower() for alias in aliases)]
+            if other_brands:
+                prepared["brand"] = other_brands[0]
             prepared["query"] = prepared["query"].strip() or state["question"]
             category = next((key for key, label in CATEGORIES.items() if label == state["question"].strip()), "")
             if category:
@@ -110,6 +146,10 @@ def build_rag_pipeline(model, retriever):
                 "status": "needs_info", "missing_field": "question",
                 "message": f"您想了解{prepared['product_model'] or '这类商品'}的哪些方面？",
             }
+            if prepared["market"] == "OTHER":
+                result = {"status": "unsupported", "message": "当前知识库接入的是中国大陆版本资料，尚未接入港版或其他海外版本，无法核实对应参数及政策，不能直接套用国行数据。"}
+            elif other_brands:
+                result = {"status": "unsupported", "message": "当前接入的真实手机资料和政策来自小米中国大陆官网，无法核实其他品牌的参数及权益，不能直接套用小米三包政策。"}
             return {"prepared": prepared, "result": result}
         except Exception as exc:
             logger.warning("RAG rewrite failed: %s", type(exc).__name__)
@@ -122,7 +162,7 @@ def build_rag_pipeline(model, retriever):
         query = state["prepared"]
         try:
             result = await asyncio.to_thread(
-                retriever.search, query["query"], goodsid=query["goodsid"], sales_channel=query["sales_channel"],
+                retriever.search, query["query"], goodsid=query["goodsid"], sales_channel=query["sales_channel"], brand=query["brand"],
             )
             logger.info("RAG FAQ status=%s evidence=%s", result["status"],
                         [item["evidence_id"] for item in result["evidence"]])
@@ -140,13 +180,18 @@ def build_rag_pipeline(model, retriever):
             if query["requires_model"]:
                 return {"result": {"status": "needs_info", "missing_field": "product_model",
                                    "message": "请问您要咨询哪个具体型号？"}}
-            return {"result": {"status": "no_match"}}
+            meta = await asyncio.to_thread(retriever.document_meta)
+            general = meta.get("general_models", {}).get(query["brand"] or "小米", "") if query["goodsid"] == "65539" else ""
+            if not general:
+                return {"result": {"status": "no_match"}}
+        else:
+            general = ""
         try:
             result = await asyncio.to_thread(
-                retriever.search_documents, query["query"], product_model=query["product_model"],
+                retriever.search_documents, query["query"], product_model=query["product_models"] or query["product_model"] or general,
             )
             logger.info("RAG original status=%s candidates=%s", result["status"], len(result["evidence"]))
-            return {"result": result, "original": result["evidence"]}
+            return {"result": result, "original": result["evidence"], "lookup_model": query["product_models"] or query["product_model"] or general}
         except Exception as exc:
             logger.warning("RAG original failed: %s", type(exc).__name__)
             return {"failed": True}
@@ -154,7 +199,7 @@ def build_rag_pipeline(model, retriever):
     def after_documents(state: RagState):
         if state.get("failed") or state["result"]["status"] in ("needs_info", "no_model"):
             return "rag_result"
-        return "hyde_generate" if state["prepared"]["product_model"] else "rag_result"
+        return "hyde_generate" if state.get("lookup_model") else "rag_result"
 
     async def hyde_generate(state: RagState):
         try:
@@ -178,7 +223,7 @@ def build_rag_pipeline(model, retriever):
         try:
             result = await asyncio.to_thread(
                 retriever.search_documents, state["hyde_query"],
-                product_model=state["prepared"]["product_model"],
+                product_model=state["lookup_model"],
             )
             logger.info("RAG HyDE status=%s candidates=%s", result["status"], len(result["evidence"]))
             return {"expanded": result["evidence"]}
@@ -194,7 +239,7 @@ def build_rag_pipeline(model, retriever):
 
     async def rag_rerank(state: RagState):
         try:
-            evidence = await asyncio.to_thread(retriever.rerank, state["prepared"]["query"], state["evidence"])
+            evidence = await asyncio.to_thread(retriever.rerank, state["prepared"]["query"], state["evidence"], state["prepared"]["product_models"])
             return {"evidence": evidence, "result": {"status": "ok" if evidence else "no_match"}}
         except Exception as exc:
             logger.warning("RAG rerank failed: %s", type(exc).__name__)
@@ -222,7 +267,7 @@ def build_rag_pipeline(model, retriever):
             output["business_result"] = {"status": "needs_info"}
             output["tasks"] = [{
                 "task_id": "knowledge", "intent": "咨询", "request": query["query"],
-                "slots": {field: query[field] for field in ("goodsid", "product_model", "sales_channel")},
+                "slots": {field: query[field] for field in ("goodsid", "product_model", "sales_channel", "brand")},
                 "faq_candidates": result.get("candidates", []),
                 "status": "needs_info", "result": None, "evidence": [],
             }]
@@ -231,10 +276,10 @@ def build_rag_pipeline(model, retriever):
             output.update(evidence=evidence, context="\n\n".join(
                 f"[{item['evidence_id']}] {item['excerpt']}" for item in evidence
             ))
-            output["business_result"] = {"status": "ok", "kind": "knowledge",
+            output["business_result"] = {"status": "ok", "kind": "knowledge", "requested_models": query.get("product_models", []),
                                          "simulated": any(item["simulated"] for item in evidence)}
         else:
-            message = (
+            message = result.get("message") or (
                 f"型号 {query.get('product_model', '')} 的资料暂未接入知识库，暂时无法核实其参数，请以官方商品资料或客服确认为准。"
                 if status == "no_model" else
                 "当前知识库没有找到足够资料来回答您的问题，暂时无法核实，请以官方商品资料或客服确认为准。"

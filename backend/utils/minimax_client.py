@@ -136,7 +136,8 @@ class MiniMaxClient:
                             if name == "validate_answer" and update.get("answer_valid") and evidence:
                                 yield "sources", {"sources": [
                                     {"label": f"{item['title']}（版本 {item['version']}）" + (" · 模拟资料" if item["simulated"] else ""),
-                                     "url": item["evidence_id"], "kind": item["kind"]}
+                                     "url": item.get("source", "") if item.get("source", "").startswith(("https://", "http://")) else item["evidence_id"],
+                                     "evidence_id": item["evidence_id"], "kind": item["kind"]}
                                     for item in evidence
                                 ]}
                             for message in update.get("messages", []):
