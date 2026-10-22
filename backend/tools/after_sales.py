@@ -1,0 +1,86 @@
+"""本项目的售后申请业务方法：落库成功才返回申请单，不代表外部商城受理。"""
+
+from uuid import uuid4
+
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
+
+ACTION_LABELS = {"return": "退货", "exchange": "换货", "repair": "维修"}
+ELIGIBLE_STATUSES = ("paid", "processing", "shipped", "completed")
+
+
+async def setup_after_sales(conn):
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS customer_chat.after_sales_applications (
+            application_no TEXT PRIMARY KEY,
+            request_id UUID NOT NULL UNIQUE,
+            user_id TEXT NOT NULL,
+            order_no TEXT NOT NULL REFERENCES customer_chat.orders(order_no),
+            item_sku TEXT NOT NULL,
+            item JSONB NOT NULL,
+            action TEXT NOT NULL CHECK (action IN ('return', 'exchange', 'repair')),
+            reason TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending_review',
+            is_demo BOOLEAN NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+    """)
+    await conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS after_sales_pending_item_idx
+        ON customer_chat.after_sales_applications (user_id, order_no, item_sku)
+        WHERE status = 'pending_review'
+    """)
+
+
+async def submit_after_sales(pool, user_id: str, *, order_no: str, item_sku: str,
+                             action: str, reason: str, request_id: str) -> dict:
+    """锁定本人订单后创建申请；相同动作返回原单，不同动作明确拒绝，避免误报提交成功。"""
+    if not user_id or action not in ACTION_LABELS:
+        raise ValueError("售后申请身份或类型无效")
+    async with pool.connection() as conn:
+        async with conn.transaction():
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute("""
+                    SELECT status, items, is_demo FROM customer_chat.orders
+                    WHERE order_no = %s AND user_id = %s FOR UPDATE
+                """, (order_no, user_id))
+                order = await cur.fetchone()
+                if order is None:
+                    raise ValueError("未找到您名下的该订单，请重新核对订单号")
+                await cur.execute("""
+                    SELECT * FROM customer_chat.after_sales_applications
+                    WHERE user_id = %s AND (request_id = %s OR
+                        (order_no = %s AND item_sku = %s AND status = 'pending_review'))
+                    ORDER BY created_at DESC LIMIT 1
+                """, (user_id, request_id, order_no, item_sku))
+                application = await cur.fetchone()
+                existing = application is not None
+                if application is not None and (application["order_no"], application["item_sku"], application["action"]) != (order_no, item_sku, action):
+                    status = "待审核" if application["status"] == "pending_review" else application["status"]
+                    raise ValueError(
+                        f"订单 {application['order_no']} 中的 {application['item']['name']} 已有{ACTION_LABELS[application['action']]}申请"
+                        f"（申请单号：{application['application_no']}，状态：{status}），"
+                        f"本次{ACTION_LABELS[action]}申请未提交，请先联系售后客服处理原申请"
+                    )
+                if application is None:
+                    if order["status"] not in ELIGIBLE_STATUSES:
+                        raise ValueError("该订单未付款或已取消，无法提交退货、换货或维修申请")
+                    items = [item for item in order["items"] if item.get("sku") == item_sku]
+                    if len(items) != 1:
+                        raise ValueError("无法唯一确定申请商品，请重新选择订单中的商品")
+                    await cur.execute("""
+                        INSERT INTO customer_chat.after_sales_applications
+                        (application_no, request_id, user_id, order_no, item_sku, item, action, reason, is_demo)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
+                    """, ("AS-" + uuid4().hex.upper(), request_id, user_id, order_no,
+                          item_sku, Jsonb(items[0]), action, reason, order["is_demo"]))
+                    application = await cur.fetchone()
+    return {
+        "application_no": application["application_no"], "order_no": application["order_no"],
+        "action": application["action"], "action_label": ACTION_LABELS[application["action"]],
+        "item": application["item"], "reason": application["reason"],
+        "status": application["status"],
+        "status_label": "待审核" if application["status"] == "pending_review" else application["status"],
+        "created_at": application["created_at"].isoformat(),
+        "is_demo": application["is_demo"], "existing": existing,
+    }

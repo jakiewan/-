@@ -10,15 +10,15 @@ const question = ref('')
 const sending = ref(false)
 const conversation = ref(null)
 const intentExamples = [
-  ['咨询', '这款笔记本支持外接 4K 显示器吗？'],
-  ['投诉', '我要投诉，客服一直没有处理我的问题'],
-  ['售后', '我买的耳机有故障，想申请换货'],
-  ['订单查询', '帮我查询订单 123 的物流状态'],
-  ['转人工', '请帮我转人工客服'],
-  ['闲聊', '你好，今天过得怎么样？'],
+  ['咨询', '小米15 的屏幕参数是什么？'],
+  ['投诉', '我要投诉，小米15 手机的售后问题一直没有人处理'],
+  ['售后', '我买的小米15 手机屏幕触摸失灵，想申请维修'],
+  ['订单查询', '帮我查询小米15 手机订单的物流状态'],
+  ['转人工', '小米15 手机的问题我想找真人处理，请帮我转人工客服'],
+  ['闲聊', '你好，我是小米手机用户，来打个招呼'],
 ]
 const messages = ref([
-  { role: 'assistant', text: '你好，欢迎使用电商智能客服 👋\n关于手机、电脑、数码配件的选购、使用和售后问题，都可以在这里咨询。' },
+  { role: 'assistant', text: '你好，欢迎使用某米电商智能客服 👋\n关于手机、电脑、数码配件的选购、使用和售后问题，都可以在这里咨询。' },
 ])
 
 function changeUser(value) {
@@ -30,11 +30,11 @@ function changeUser(value) {
 
 onMounted(async () => {
   try {
-    const response = await fetch('/api/auth/me')
+    const response = await fetch('/api/auth/me', { signal: AbortSignal.timeout(8000) })
     if (response.ok) changeUser(await response.json())
     else if (response.status !== 401) authError.value = '读取登录状态失败，请重试登录'
-  } catch {
-    authError.value = '无法连接服务，请检查后端是否启动'
+  } catch (cause) {
+    authError.value = cause.name === 'TimeoutError' ? '读取登录状态超时，请检查后端服务后重试登录' : '无法连接服务，请检查后端是否启动'
   } finally {
     checkingSession.value = false
   }
@@ -44,7 +44,7 @@ async function logout() {
   if (sending.value || switching.value) return
   switching.value = true
   try {
-    const response = await fetch('/api/auth/logout', { method: 'POST' })
+    const response = await fetch('/api/auth/logout', { method: 'POST', signal: AbortSignal.timeout(8000) })
     if (!response.ok) throw new Error('退出失败')
     changeUser(null)
   } catch {
@@ -54,13 +54,12 @@ async function logout() {
   }
 }
 
-async function sendMessage() {
-  const text = question.value.trim()
+async function sendMessage(text = question.value.trim()) {
   if (!text || sending.value || switching.value || !user.value) return
 
   sending.value = true
   messages.value.push({ role: 'user', text })
-  const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], sources: [], orders: [], pending: true }) - 1
+  const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], sources: [], orders: [], applications: [], pending: true }) - 1
   const reply = messages.value[replyIndex]
   const startedAt = performance.now()
   question.value = ''
@@ -103,6 +102,8 @@ async function sendMessage() {
             }
           }
           if (name === 'orders') reply.orders = data.orders
+          if (name === 'applications') reply.applications = data.applications
+          if (name === 'after_sales_confirmation') reply.confirmationRequired = data.required
           if (name === 'node') {
             const node = reply.nodes.find(item => item.id === data.id)
             if (node) Object.assign(node, data)
@@ -155,7 +156,7 @@ async function sendMessage() {
   <main class="page">
     <div class="page-heading">
       <span class="eyebrow">E-COMMERCE AI SUPPORT</span>
-      <h1>企业级电商智能客服</h1>
+      <h1>某米电商智能客服</h1>
       <p>电子产品选购与售后咨询，从这里开始。</p>
     </div>
 
@@ -166,7 +167,7 @@ async function sendMessage() {
       <header class="chat-header">
         <div class="avatar service-avatar" aria-hidden="true">客</div>
         <div>
-          <h2>电商智能客服</h2>
+          <h2>某米电商智能客服</h2>
           <p><span class="status-dot"></span>很高兴为你服务</p>
         </div>
         <div class="account-controls">
@@ -190,7 +191,7 @@ async function sendMessage() {
           <div class="message-content">
             <span class="sender">{{ message.role === 'assistant' ? '电商客服助手' : '你' }}</span>
             <div v-if="message.steps" class="stream-progress">
-              <p v-if="message.intent" class="intent-result"><strong>识别意图：{{ message.intent.intent }}</strong><span>{{ message.intent.reason }}</span></p>
+              <p v-if="message.intent" class="intent-result"><strong>识别意图：{{ message.intent.intent }}</strong><span>意图来源：{{ message.intent.source }}</span><span v-if="message.intent.reason">{{ message.intent.reason }}</span><span>已提供上一轮问答：{{ message.intent.context_used ? '是' : '否' }}</span></p>
               <div v-if="message.nodes.length" class="node-trace">
                 <strong>Graph 节点执行轨迹</strong>
                 <ol aria-label="Graph 节点执行轨迹">
@@ -240,6 +241,23 @@ async function sendMessage() {
                 </li>
               </ol>
             </section>
+            <p v-if="message.confirmationRequired && index === messages.length - 1 && !message.pending && !message.error">
+              <button type="button" :disabled="sending || switching" @click="sendMessage('确认提交')">确认提交</button>
+            </p>
+            <section v-for="application in message.applications" :key="application.application_no" class="order-card after-sales-card" :aria-label="`售后申请 ${application.application_no}`">
+              <header class="order-card-heading">
+                <h3>售后申请 {{ application.application_no }}</h3>
+                <span>已提交申请 · {{ application.status_label }}</span>
+              </header>
+              <p v-if="application.is_demo" class="order-demo">演示订单的本地申请记录 · 未提交到外部商城</p>
+              <dl class="order-details">
+                <div><dt>申请类型</dt><dd>{{ application.action_label }}</dd></div>
+                <div><dt>订单号</dt><dd>{{ application.order_no }}</dd></div>
+                <div><dt>商品</dt><dd>{{ application.item.name }} · {{ application.item.spec }} · 数量 {{ application.item.quantity }}</dd></div>
+                <div><dt>申请原因</dt><dd>{{ application.reason || '未提供' }}</dd></div>
+                <div><dt>提交时间</dt><dd>{{ new Date(application.created_at).toLocaleString('zh-CN') }}</dd></div>
+              </dl>
+            </section>
             <p v-if="message.sources?.length" class="data-sources">
               数据来源：
               <template v-for="source in message.sources" :key="source.url">
@@ -253,7 +271,7 @@ async function sendMessage() {
       </div>
 
       <footer class="chat-footer">
-        <form class="composer" @submit.prevent="sendMessage">
+        <form class="composer" @submit.prevent="sendMessage()">
           <label class="sr-only" for="question">输入你的问题</label>
           <input id="question" v-model="question" type="text" placeholder="输入你的问题…" autocomplete="off" @keydown.enter="($event.isComposing || $event.keyCode === 229) && $event.preventDefault()" />
           <button type="submit" :disabled="sending || switching || !question.trim()">{{ sending ? '发送中…' : '发送' }} <span aria-hidden="true">↗</span></button>

@@ -8,9 +8,9 @@ test.beforeEach(async ({ page }) => {
       ['start', {}],
       ['node', { id: 'prepare-1', name: 'prepare_context', label: '准备本轮状态', status: 'running' }],
       ['node', { id: 'prepare-1', name: 'prepare_context', label: '准备本轮状态', status: 'done', elapsed_ms: 1 }],
-      ['node', { id: 'intent-1', name: 'recognize_intent', label: 'BERT 意图识别', status: 'running' }],
-      ['intent', { intent: '咨询', reason: '询问信息' }],
-      ['node', { id: 'intent-1', name: 'recognize_intent', label: 'BERT 意图识别', status: 'done', elapsed_ms: 50 }],
+      ['node', { id: 'intent-1', name: 'recognize_intent', label: 'LLM 意图识别', status: 'running' }],
+      ['intent', { intent: '咨询', source: 'LLM', reason: '询问信息', context_used: false }],
+      ['node', { id: 'intent-1', name: 'recognize_intent', label: 'LLM 意图识别', status: 'done', elapsed_ms: 50 }],
       ['node', { id: 'retrieve-1', name: 'retrieve_knowledge', label: '知识检索（暂未接入）', status: 'running' }],
       ['node', { id: 'retrieve-1', name: 'retrieve_knowledge', label: '知识检索（暂未接入）', status: 'done', elapsed_ms: 1 }],
       ['node', { id: 'answer-1', name: 'generate_answer', label: '生成回复候选', status: 'running' }],
@@ -28,8 +28,8 @@ test.beforeEach(async ({ page }) => {
 
 test('输入、空白校验、按钮和回车发送、接口结果展示', async ({ page }) => {
   await page.goto('/')
-  await expect(page).toHaveTitle('企业级电商智能客服')
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('企业级电商智能客服')
+  await expect(page).toHaveTitle('某米电商智能客服')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('某米电商智能客服')
   const input = page.getByRole('textbox', { name: '输入你的问题' })
   const send = page.getByRole('button', { name: '发送' })
   const messages = page.getByRole('article')
@@ -51,10 +51,12 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await expect(messages.nth(1)).toContainText('如何查询订单？')
   await expect(messages.nth(2)).toContainText('测试客服回复')
   await expect(messages.nth(2)).toContainText('识别意图：咨询')
+  await expect(messages.nth(2)).toContainText('意图来源：LLM')
+  await expect(messages.nth(2)).not.toContainText('BERT 分类')
   const trace = messages.nth(2).getByRole('list', { name: 'Graph 节点执行轨迹' })
   await expect(trace.locator('code')).toHaveText(['prepare_context', 'recognize_intent', 'retrieve_knowledge', 'generate_answer', 'validate_answer'])
   await expect(trace.getByRole('listitem')).toHaveCount(5)
-  await expect(trace).toContainText('BERT 意图识别（recognize_intent）')
+  await expect(trace).toContainText('LLM 意图识别（recognize_intent）')
   await expect(trace).toContainText('知识检索（暂未接入）（retrieve_knowledge）')
   await expect(trace).toContainText('0.10 秒')
   await expect(trace).not.toContainText('select_business_route')
@@ -71,6 +73,51 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await expect(messages).toHaveCount(5)
   await page.reload()
   await expect(messages).toHaveCount(1)
+})
+
+test('售后确认按钮发送确认提交，旧确认失效且提交期间不会重复发送', async ({ page }) => {
+  const requests = []
+  let completeSubmission
+  const submissionGate = new Promise(resolve => { completeSubmission = resolve })
+  await page.route('**/api/chat/stream', async route => {
+    const { message } = route.request().postDataJSON()
+    requests.push(message)
+    if (message === '确认提交') await submissionGate
+    const events = message === '申请维修'
+      ? [['after_sales_confirmation', { required: true }], ['delta', { text: '请核对订单后确认提交。' }]]
+      : [['delta', { text: message === '确认提交' ? '已提交申请，待审核。' : '您可以修改信息后再确认提交。' }]]
+    await route.fulfill({
+      contentType: 'text/event-stream',
+      body: [['start', {}], ...events, ['done', {}]]
+        .map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(''),
+    })
+  })
+  await page.goto('/')
+  const input = page.getByRole('textbox', { name: '输入你的问题' })
+  const confirm = page.getByRole('button', { name: '确认提交', exact: true })
+  await input.fill('先咨询')
+  await input.press('Enter')
+  await expect(page.getByRole('article').last()).toContainText('再确认提交')
+  await expect(confirm).toHaveCount(0)
+  await input.fill('申请维修')
+  await input.press('Enter')
+  await expect(confirm).toBeEnabled()
+  await input.fill('订单不对')
+  await input.press('Enter')
+  await expect(confirm).toHaveCount(0)
+  await expect(page.getByRole('article').last()).toContainText('修改信息')
+  await input.fill('申请维修')
+  await input.press('Enter')
+  await expect(confirm).toBeEnabled()
+  await confirm.evaluate(button => { button.click(); button.click() })
+  await expect(page.getByRole('article').last()).toContainText('正在处理')
+  await expect(confirm).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '发送中…' })).toBeDisabled()
+  expect(requests.filter(message => message === '确认提交')).toHaveLength(1)
+  completeSubmission()
+  await expect(page.getByRole('article').last()).toContainText('已提交申请，待审核')
+  await expect(page.getByRole('article').nth(-2)).toHaveText(/确认提交/)
+  await expect(confirm).toHaveCount(0)
 })
 
 test('手机宽度下页面不横向溢出，输入按文本显示', async ({ page }) => {
@@ -99,4 +146,24 @@ test('接口拒绝未登录请求，服务出错后可以再次提问', async ({
   await page.getByRole('textbox').fill('再次提问')
   await page.getByRole('button', { name: '发送' }).click()
   await expect(page.getByRole('article').last()).toContainText('测试客服回复')
+})
+
+test('登录接口无响应时退出加载状态，并允许恢复后重试登录', async ({ page }) => {
+  await page.route('**/api/auth/me', () => {})
+  await page.route('**/api/auth/login', () => {})
+  await page.goto('/')
+  await expect(page.getByRole('status')).toHaveText('正在读取登录状态…')
+  await expect(page.getByRole('heading', { name: '登录某米电商智能客服' })).toBeVisible({ timeout: 12000 })
+  await expect(page.getByRole('alert')).toContainText('读取登录状态超时')
+
+  await page.getByLabel('账号', { exact: true }).fill('test-user')
+  await page.getByLabel('密码', { exact: true }).fill('test-password')
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('登录请求超时', { timeout: 12000 })
+  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeEnabled()
+
+  await page.route('**/api/auth/login', route => route.fulfill({ json: { username: 'test-user' } }))
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page.getByRole('region', { name: '客服对话' })).toBeVisible()
+  await expect(page.getByRole('status')).toHaveCount(0)
 })

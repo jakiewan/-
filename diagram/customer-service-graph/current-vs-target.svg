@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1560 1180" font-family="'JetBrains Mono','Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">
+  <style>
+    .t{fill:#e2e8f0;font-size:12px;font-weight:600}
+    .ts{fill:#94a3b8;font-size:9px}
+    .tl{fill:#94a3b8;font-size:7.5px}
+    .lbl{font-size:8px;font-weight:600}
+    .note{fill:#64748b;font-size:9px}
+    .h{font-size:13px;font-weight:700}
+  </style>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="a-slate" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#64748b"/></marker>
+    <marker id="a-violet" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#a78bfa"/></marker>
+    <marker id="a-emerald" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#34d399"/></marker>
+    <marker id="a-rose" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#fb7185"/></marker>
+    <marker id="a-blue" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#60a5fa"/></marker>
+    <marker id="a-amber" markerWidth="9" markerHeight="7" refX="8.5" refY="3.5" orient="auto"><polygon points="0 0, 9 3.5, 0 7" fill="#fbbf24"/></marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <text x="40" y="40" fill="#f1f5f9" font-size="18" font-weight="700">客服主图 · 现状与目标对照</text>
+  <text x="40" y="60" fill="#64748b" font-size="10">左半为当前实测链路，右半为建议演进；绿色为已跑通，蓝色为本次建议新增，灰色虚线为未接入</text>
+
+  <!-- ================= 左：现状 ================= -->
+  <rect x="40" y="85" width="720" height="1040" rx="12" fill="none" stroke="#475569" stroke-width="1" stroke-dasharray="6 4"/>
+  <text x="60" y="110" class="h" fill="#94a3b8">现状（实测）</text>
+  <text x="60" y="126" class="note">咨询路径 6.4~9.8 秒，两次 LLM 决策占 90%</text>
+
+  <!-- 现状链路 -->
+  <g><rect x="290" y="150" width="90" height="22" rx="11" fill="#0f172a" stroke="#64748b" stroke-width="1.5"/><text x="335" y="164.5" class="tl" text-anchor="middle">START</text></g>
+  <path d="M335,172 L335,196" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a-slate)"/>
+  <g><rect x="265" y="196" width="140" height="40" rx="6" fill="#0f172a"/><rect x="265" y="196" width="140" height="40" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="335" y="213" class="t" text-anchor="middle">prepare_context</text><text x="335" y="227" class="tl" text-anchor="middle">0ms</text></g>
+  <path d="M335,236 L335,260" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a-slate)"/>
+  <g><rect x="265" y="260" width="140" height="42" rx="6" fill="#0f172a"/><rect x="265" y="260" width="140" height="42" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="335" y="277" class="t" text-anchor="middle">recognize_intent</text><text x="335" y="292" class="tl" text-anchor="middle">BERT 60~280ms</text></g>
+  <path d="M335,302 L335,326" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#a-violet)"/>
+
+  <g><polygon points="335,326 445,366 335,406 225,366" fill="#0f172a"/><polygon points="335,326 445,366 335,406 225,366" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="335" y="362" class="t" text-anchor="middle">route_intent</text><text x="335" y="376" class="tl" text-anchor="middle">阈值 0.85</text></g>
+
+  <!-- 五分支 -->
+  <path d="M225,366 L120,366 L120,432" fill="none" stroke="#64748b" stroke-width="1.2" marker-end="url(#a-slate)"/>
+  <path d="M290,400 L290,432" fill="none" stroke="#64748b" stroke-width="1.2" marker-end="url(#a-slate)"/>
+  <path d="M335,406 L335,432" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <path d="M385,400 L385,432" fill="none" stroke="#64748b" stroke-width="1.2" marker-end="url(#a-slate)"/>
+  <path d="M445,366 L570,366 L570,432" fill="none" stroke="#64748b" stroke-width="1.2" marker-end="url(#a-slate)"/>
+
+  <g><rect x="60" y="432" width="120" height="40" rx="6" fill="#0f172a"/><rect x="60" y="432" width="120" height="40" rx="6" fill="rgba(30,41,59,0.5)" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 3"/><text x="120" y="449" class="ts" text-anchor="middle">闲聊</text><text x="120" y="463" class="tl" text-anchor="middle">LLM 2.2s</text></g>
+  <g><rect x="245" y="432" width="120" height="40" rx="6" fill="#0f172a"/><rect x="245" y="432" width="120" height="40" rx="6" fill="rgba(30,41,59,0.5)" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 3"/><text x="305" y="449" class="ts" text-anchor="middle">订单/售后/投诉</text><text x="305" y="463" class="tl" text-anchor="middle">0.05~1.4s</text></g>
+  <g><rect x="275" y="500" width="120" height="40" rx="6" fill="#0f172a"/><rect x="275" y="500" width="120" height="40" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/><text x="335" y="517" class="ts" text-anchor="middle">咨询 → 检索</text><text x="335" y="531" class="tl" text-anchor="middle">3.4~7.7s</text></g>
+  <g><rect x="505" y="432" width="130" height="40" rx="6" fill="#0f172a"/><rect x="505" y="432" width="130" height="40" rx="6" fill="rgba(30,41,59,0.5)" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 3"/><text x="570" y="449" class="ts" text-anchor="middle">转人工</text><text x="570" y="463" class="tl" text-anchor="middle">0.05s</text></g>
+
+  <!-- 检索子图展开 -->
+  <rect x="240" y="565" width="380" height="150" rx="10" fill="none" stroke="#60a5fa" stroke-width="1" stroke-dasharray="8 4"/>
+  <text x="256" y="585" class="lbl" fill="#60a5fa">RAG 子图（retrieve_knowledge）</text>
+  <g><rect x="262" y="600" width="150" height="42" rx="6" fill="#0f172a"/><rect x="262" y="600" width="150" height="42" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/><text x="337" y="617" class="ts" text-anchor="middle">rag_decide #1</text><text x="337" y="632" class="tl" text-anchor="middle">选工具+填参数 3.2s</text></g>
+  <path d="M337,642 L337,660" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <g><rect x="262" y="660" width="150" height="40" rx="6" fill="#0f172a"/><rect x="262" y="660" width="150" height="40" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="337" y="677" class="ts" text-anchor="middle">rag_search</text><text x="337" y="691" class="tl" text-anchor="middle">Milvus+Redis 0.1s</text></g>
+  <path d="M412,680 L462,680" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <g><rect x="462" y="600" width="150" height="42" rx="6" fill="#0f172a"/><rect x="462" y="600" width="150" height="42" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/><text x="537" y="617" class="ts" text-anchor="middle">rag_decide #2</text><text x="537" y="632" class="tl" text-anchor="middle">评证据+选ID 3.6s</text></g>
+  <path d="M537,642 L537,660" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <g><rect x="462" y="660" width="150" height="40" rx="6" fill="#0f172a"/><rect x="462" y="660" width="150" height="40" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="537" y="677" class="ts" text-anchor="middle">rag_result</text><text x="537" y="691" class="tl" text-anchor="middle">整理证据 0ms</text></g>
+  <text x="256" y="708" class="tl" fill="#fb7185">两次 LLM 决策占 6.8s / 7.7s，检索本身仅 0.1s</text>
+
+  <path d="M335,540 L335,560" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <path d="M430,715 L430,740" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a-slate)"/>
+
+  <g><rect x="255" y="740" width="350" height="52" rx="6" fill="#0f172a"/><rect x="255" y="740" width="350" height="52" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="430" y="760" class="t" text-anchor="middle">generate_answer → validate_answer</text><text x="430" y="776" class="tl" text-anchor="middle">FAQ/订单路径 0ms，参数类走 LLM 2.1s</text></g>
+
+  <g><rect x="55" y="830" width="690" height="90" rx="8" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="5 3"/>
+    <text x="72" y="852" class="lbl" fill="#fbbf24">已验证的三个问题</text>
+    <text x="72" y="870" class="note">1. 型号未接入时仍花 3s 让模型确认（已修：no_model 短路，6.36s→3.31s）</text>
+    <text x="72" y="886" class="note">2. 检索命中与否都付两次 LLM 决策钱，命中也付</text>
+    <text x="72" y="902" class="note">3. 品类推导（手机/空调）目前依赖 LLM，规则表尚未验证</text>
+  </g>
+
+  <g><text x="60" y="955" class="lbl" fill="#64748b">现状小结</text>
+    <text x="60" y="974" class="note">结构对了：意图分流 + 确定性分支 + 检索层 + 统一出口 + 转人工</text>
+    <text x="60" y="990" class="note">慢在检索层：让模型做本可以由代码决定的事</text>
+    <text x="60" y="1006" class="note">FAQ 与文档是两个粒度（品类政策 vs 型号参数），不是先后关系</text>
+  </g>
+
+  <!-- ================= 右：目标 ================= -->
+  <rect x="800" y="85" width="720" height="1040" rx="12" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="10 5"/>
+  <text x="820" y="110" class="h" fill="#fbbf24">目标（建议演进）</text>
+  <text x="820" y="126" class="note">模型只做它擅长的：理解与组织语言；确定性的事交给代码</text>
+
+  <g><rect x="1050" y="150" width="90" height="22" rx="11" fill="#0f172a" stroke="#64748b" stroke-width="1.5"/><text x="1095" y="164.5" class="tl" text-anchor="middle">START</text></g>
+  <path d="M1095,172 L1095,196" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a-slate)"/>
+  <g><rect x="1025" y="196" width="140" height="40" rx="6" fill="#0f172a"/><rect x="1025" y="196" width="140" height="40" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="1095" y="213" class="t" text-anchor="middle">prepare_context</text><text x="1095" y="227" class="tl" text-anchor="middle">已跑通</text></g>
+  <path d="M1095,236 L1095,260" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a-slate)"/>
+  <g><rect x="1025" y="260" width="140" height="42" rx="6" fill="#0f172a"/><rect x="1025" y="260" width="140" height="42" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/><text x="1095" y="277" class="t" text-anchor="middle">recognize_intent</text><text x="1095" y="292" class="tl" text-anchor="middle">BERT 已跑通</text></g>
+  <path d="M1095,302 L1095,326" fill="none" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#a-violet)"/>
+  <g><polygon points="1095,326 1205,366 1095,406 985,366" fill="#0f172a"/><polygon points="1095,326 1205,366 1095,406 985,366" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/><text x="1095" y="362" class="t" text-anchor="middle">route_intent</text><text x="1095" y="376" class="tl" text-anchor="middle">按意图分流</text></g>
+
+  <path d="M985,366 L880,366 L880,432" fill="none" stroke="#64748b" stroke-width="1.2" marker-end="url(#a-slate)"/>
+  <path d="M1055,400 L1055,432" fill="none" stroke="#64748b" stroke-width="1.2" marker-end="url(#a-slate)"/>
+  <path d="M1095,406 L1095,432" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <path d="M1140,400 L1140,432" fill="none" stroke="#64748b" stroke-width="1.2" marker-end="url(#a-slate)"/>
+  <path d="M1205,366 L1330,366 L1330,432" fill="none" stroke="#fb7185" stroke-width="1.2" marker-end="url(#a-rose)"/>
+
+  <g><rect x="820" y="432" width="120" height="40" rx="6" fill="#0f172a"/><rect x="820" y="432" width="120" height="40" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="880" y="449" class="ts" text-anchor="middle">闲聊 → 模板</text><text x="880" y="463" class="tl" text-anchor="middle">0.2s 不调 LLM</text></g>
+  <g><rect x="995" y="432" width="120" height="40" rx="6" fill="#0f172a"/><rect x="995" y="432" width="120" height="40" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="1055" y="449" class="ts" text-anchor="middle">订单/售后/投诉</text><text x="1055" y="463" class="tl" text-anchor="middle">已跑通</text></g>
+  <g><rect x="1085" y="500" width="120" height="40" rx="6" fill="#0f172a"/><rect x="1085" y="500" width="120" height="40" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/><text x="1145" y="517" class="ts" text-anchor="middle">咨询 → 分流</text></g>
+  <g><rect x="1265" y="432" width="130" height="40" rx="6" fill="#0f172a"/><rect x="1265" y="432" width="130" height="40" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/><text x="1330" y="449" class="ts" text-anchor="middle">转人工</text><text x="1330" y="463" class="tl" text-anchor="middle">已跑通</text></g>
+
+  <!-- 咨询分流展开 -->
+  <path d="M1145,540 L1145,562" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <rect x="860" y="562" width="560" height="200" rx="10" fill="none" stroke="#60a5fa" stroke-width="1" stroke-dasharray="8 4"/>
+  <text x="876" y="582" class="lbl" fill="#60a5fa">咨询分流（新增，全部纯代码）</text>
+
+  <g><rect x="880" y="598" width="160" height="52" rx="6" fill="#0f172a"/><rect x="880" y="598" width="160" height="52" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/><text x="960" y="616" class="ts" text-anchor="middle">规则分流</text><text x="960" y="631" class="tl" text-anchor="middle">型号? 政策词? 品类?</text><text x="960" y="643" class="tl" fill="#60a5fa">0ms</text></g>
+
+  <path d="M960,650 L960,668" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <g><rect x="880" y="668" width="160" height="48" rx="6" fill="#0f172a"/><rect x="880" y="668" width="160" height="48" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="960" y="686" class="ts" text-anchor="middle">FAQ 检索</text><text x="960" y="701" class="tl" text-anchor="middle">Milvus+Redis 0.15s</text></g>
+
+  <path d="M1040,692 L1080,692" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#a-emerald)"/>
+  <g><rect x="1080" y="668" width="150" height="48" rx="6" fill="#0f172a"/><rect x="1080" y="668" width="150" height="48" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="1155" y="686" class="ts" text-anchor="middle">文档检索</text><text x="1155" y="701" class="tl" text-anchor="middle">按型号 Milvus 0.2s</text></g>
+
+  <path d="M960,716 L960,734" fill="none" stroke="#64748b" stroke-width="1.2" marker-end="url(#a-slate)"/>
+  <path d="M1155,716 L1155,734" fill="none" stroke="#64748b" stroke-width="1.2" marker-end="url(#a-slate)"/>
+  <g><rect x="880" y="734" width="350" height="20" rx="4" fill="none" stroke="#60a5fa" stroke-width="1" stroke-dasharray="4 3"/><text x="1055" y="748" class="tl" text-anchor="middle" fill="#60a5fa">未命中 → 降级到 RAG Agent（1 次 LLM 改写，非 2 次决策）</text></g>
+
+  <path d="M1145,540 L1145,562" fill="none" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#a-blue)"/>
+  <path d="M1055,754 L1055,790" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a-slate)"/>
+
+  <g><rect x="880" y="790" width="350" height="46" rx="6" fill="#0f172a"/><rect x="880" y="790" width="350" height="46" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/><text x="1055" y="808" class="t" text-anchor="middle">generate_answer → validate_answer</text><text x="1055" y="824" class="tl" text-anchor="middle">已跑通 · 已支持 token 级流式</text></g>
+
+  <g><rect x="1250" y="790" width="190" height="46" rx="6" fill="#0f172a"/><rect x="1250" y="790" width="190" height="46" rx="6" fill="rgba(30,41,59,0.5)" stroke="#64748b" stroke-width="1.5" stroke-dasharray="5 3"/><text x="1345" y="808" class="ts" text-anchor="middle">业务写操作</text><text x="1345" y="824" class="tl" text-anchor="middle">售后提交/工单 未接入</text></g>
+
+  <g><rect x="820" y="870" width="680" height="120" rx="8" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="5 3"/>
+    <text x="838" y="892" class="lbl" fill="#fbbf24">演进三步（按收益排序，每步可独立验证）</text>
+    <text x="838" y="912" class="note">1. FAQ 快速路径：规则分流 + 直接检索，咨询命中 7.7s → 0.4s　← 建议先做</text>
+    <text x="838" y="930" class="note">2. 砍掉第二次 rag_decide：检索器已算好分数与状态，不必再问模型　← 改动最小</text>
+    <text x="838" y="948" class="note">3. 问候走模板：闲聊 2.2s → 0.2s</text>
+    <text x="838" y="966" class="note">保留 RAG Agent 作降级路径，指代消解与证据相关性判断不丢</text>
+  </g>
+
+  <g><text x="820" y="1022" class="lbl" fill="#64748b">不变的部分</text>
+    <text x="820" y="1041" class="note">意图分流、订单/售后/投诉分支、检索层、统一出口、转人工、检查点与记忆</text>
+    <text x="820" y="1057" class="note">原则：模型只做理解与组织语言，能由代码判定的事不进模型</text>
+  </g>
+
+  <!-- 图例 -->
+  <g>
+    <rect x="820" y="1085" width="14" height="10" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399"/><text x="840" y="1094" class="ts" fill="#e2e8f0">已跑通</text>
+    <rect x="900" y="1085" width="14" height="10" rx="2" fill="rgba(59,130,246,0.3)" stroke="#60a5fa"/><text x="920" y="1094" class="ts" fill="#e2e8f0">本次建议新增</text>
+    <rect x="1010" y="1085" width="14" height="10" rx="2" fill="rgba(30,41,59,0.5)" stroke="#64748b" stroke-dasharray="3 2"/><text x="1030" y="1094" class="ts" fill="#e2e8f0">未接入</text>
+    <rect x="1090" y="1085" width="14" height="10" rx="2" fill="rgba(76,29,149,0.4)" stroke="#a78bfa"/><text x="1110" y="1094" class="ts" fill="#e2e8f0">已存在的分类/状态</text>
+  </g>
+</svg>

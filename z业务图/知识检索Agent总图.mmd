@@ -1,0 +1,49 @@
+flowchart TD
+    U[用户提问] --> P[准备本轮状态与历史]
+    P --> B[BERT 意图识别]
+    B -->|置信度足够| ROUTE{按识别结果路由}
+    B -->|置信度不足| L[LLM 兜底识别]
+    L -->|意图明确| ROUTE
+    L -->|仍不明确| G[统一生成回复]
+
+    ROUTE -->|知识咨询| D
+    ROUTE -->|闲聊| CHAT[闲聊处理]
+    ROUTE -->|订单查询| ORDER[订单物流：未接通]
+    ROUTE -->|办理售后| AFTER[售后入口：未接通]
+    ROUTE -->|投诉| COMPLAINT[投诉建议：占位]
+    ROUTE -->|复杂诉求| COMPLEX[复杂业务子图：骨架保留]
+    ROUTE -->|转人工| HUMAN[人工接入：未接通]
+
+    subgraph RAG[知识检索 Agent 子图 · 待接入]
+        D[决策：补参、选择工具、评估证据]
+        D -->|查标准问答| FAQ[FAQ：BGE-M3 + Milvus + Redis
+检索器已实现]
+        D -->|查说明书等| DOC[文档检索：待实现]
+        D -->|查关系等| GRAPH[Neo4j 图谱检索：待实现]
+        FAQ -->|答案与来源| D
+        DOC -->|正文与来源| D
+        GRAPH -->|关系与来源| D
+        D -->|证据足够／需追问／达到上限／失败| RESULT[返回结构化结果与证据]
+    end
+
+    RESULT --> AGG[结果与证据聚合]
+    CHAT --> AGG
+    ORDER --> AGG
+    AFTER --> AGG
+    COMPLAINT --> AGG
+    COMPLEX --> AGG
+    AGG --> CHECK{检查人工需求}
+    CHECK -->|需要| HUMAN
+    CHECK -->|无需| G
+    HUMAN --> G
+    G --> V{回复校验}
+    V -->|通过| OUT[页面正文与来源 · 本轮结束]
+    V -->|不通过| SAFE[安全兜底]
+    SAFE --> OUT
+
+    classDef planned fill:#fff3d6,stroke:#c4881c,stroke-dasharray:5 4,color:#493400
+    classDef ready fill:#dcfce7,stroke:#16834b,color:#103b25
+    classDef placeholder fill:#f1f5f9,stroke:#94a3b8,color:#475569
+    class D,RESULT,DOC,GRAPH planned
+    class FAQ ready
+    class ORDER,AFTER,COMPLAINT,COMPLEX,HUMAN placeholder

@@ -18,14 +18,10 @@ from ..rag.agent import build_rag_agent
 from . import nodes
 from .state import BusinessRoute, CustomerServiceState
 
-# 初始阈值尚待业务样本验证，不表示 BERT 分数已经校准。
-INTENT_CONFIDENCE_THRESHOLD = 0.85
 MAX_TOOL_ROUNDS = 5
 
 
-def route_intent(state: CustomerServiceState) -> BusinessRoute | Literal["fallback_intent", "handoff", "generate_answer"]:
-    if state["intent_confidence"] < INTENT_CONFIDENCE_THRESHOLD:
-        return "fallback_intent"
+def route_intent(state: CustomerServiceState) -> BusinessRoute | Literal["handoff", "generate_answer"]:
     return route_business(state)
 
 
@@ -79,16 +75,15 @@ def build_complex_agent():
     return builder.compile()
 
 
-def build_workflow(classifier=None, *, model=None, checkpointer=None, store=None, retriever=None):
+def build_workflow(*, model=None, checkpointer=None, store=None, retriever=None):
     """父图统一接入模型和会话存储；不提供依赖时仍可独立导出结构。"""
     builder = StateGraph(CustomerServiceState, context_schema=UserContext)
     builder.add_node("prepare_context", nodes.prepare_context)  # 准备本轮上下文，重置临时结果并保留有效任务槽位。
-    builder.add_node("recognize_intent", partial(nodes.recognize_intent, classifier=classifier))  # 绑定分类器参数，由 BERT 识别意图。
-    builder.add_node("fallback_intent", partial(nodes.fallback_intent, model=model))  # BERT 置信度不足时，由 LLM 兜底识别或追问。
+    builder.add_node("recognize_intent", partial(nodes.recognize_intent, model=model))  # LLM 识别单个主意图，结果由 Schema 校验。
     builder.add_node("handle_chitchat", nodes.handle_chitchat)  # 准备普通闲聊上下文；显式档案操作和天气暂缓。
     builder.add_node("retrieve_knowledge", partial(nodes.retrieve_knowledge, agent=build_rag_agent(model, retriever)))  # 知识 Agent 选择 FAQ 或文档工具，返回本轮证据。
     builder.add_node("query_order", partial(nodes.query_order, model=model))  # 抽取可选单号，查询当前登录账号名下的订单。
-    builder.add_node("handle_after_sales", nodes.handle_after_sales)  # 返回后端配置的售后页面动作，不提交售后申请。
+    builder.add_node("handle_after_sales", partial(nodes.handle_after_sales, model=model))  # 节点内抽槽、补参，用户确认后提交售后申请。
     builder.add_node("handle_complaint", nodes.handle_complaint)  # 整理投诉诉求、建议和证据。
     builder.add_node("complex_agent", build_complex_agent())  # 将编译后的复杂问题子图作为主图节点。
     builder.add_node("aggregate_results", nodes.aggregate_results)  # 汇总业务结果、证据、动作和追问内容。
@@ -104,15 +99,16 @@ def build_workflow(classifier=None, *, model=None, checkpointer=None, store=None
         "handle_chitchat", "retrieve_knowledge", "query_order", "handle_after_sales",
         "handle_complaint", "complex_agent", "generate_answer", "handoff",
     )}
-    builder.add_conditional_edges("recognize_intent", route_intent, {
-        **business_paths, "fallback_intent": "fallback_intent",
-    })
-    builder.add_conditional_edges("fallback_intent", route_business, business_paths)
+    builder.add_conditional_edges("recognize_intent", route_intent, business_paths)
     for branch in (
         "handle_chitchat", "retrieve_knowledge", "query_order",
         "handle_after_sales", "handle_complaint", "complex_agent",
     ):
-        builder.add_edge(branch, "aggregate_results")
+        if branch != "query_order":
+            builder.add_edge(branch, "aggregate_results")
+    builder.add_conditional_edges("query_order", lambda state: "retrieve_knowledge" if state["intent"] == "咨询" else "aggregate_results", {
+        "retrieve_knowledge": "retrieve_knowledge", "aggregate_results": "aggregate_results",
+    })
     builder.add_edge("aggregate_results", "check_handoff")
     builder.add_conditional_edges("check_handoff", route_handoff, {  # 按 requires_handoff 决定是否先处理人工接管。
         "handoff": "handoff",  # 需要人工接管，先取得接管结果。

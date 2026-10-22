@@ -15,6 +15,7 @@ async function login() {
   try {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
+      signal: AbortSignal.timeout(8000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: username.value.trim(), password: password.value }),
     })
@@ -23,7 +24,7 @@ async function login() {
     password.value = ''
     emit('logged-in', user)
   } catch (cause) {
-    error.value = cause instanceof TypeError ? '无法连接服务，请稍后重试' : cause.message
+    error.value = cause.name === 'TimeoutError' ? '登录请求超时，请检查后端服务后重试' : cause instanceof TypeError ? '无法连接服务，请稍后重试' : cause.message
   } finally {
     busy.value = false
   }
@@ -33,7 +34,7 @@ async function login() {
 <template>
   <section class="login-card" aria-label="账号登录">
     <span class="avatar service-avatar" aria-hidden="true">客</span>
-    <h2>登录电商智能客服</h2>
+    <h2>登录某米电商智能客服</h2>
     <p class="login-description">登录你的账号，咨询电子产品选购、使用与售后问题。</p>
     <form class="login-form" @submit.prevent="login">
       <label for="username">账号</label>

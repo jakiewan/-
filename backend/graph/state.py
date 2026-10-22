@@ -22,8 +22,12 @@ class IntentTask(TypedDict):
 class CustomerServiceState(AgentState):
     intent: Intent
     intent_reason: str
-    intent_confidence: float
+    intent_confidence: float | None
     intent_context_used: bool
+    bert_intent: Intent
+    bert_confidence: float
+    bert_context_used: bool
+    intent_source: str
     context: str
     requires_tools: bool
     tool_rounds: int

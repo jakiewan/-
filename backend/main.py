@@ -19,6 +19,7 @@ from .utils.minimax_client import MiniMaxClient
 from .rag import FaqRetriever
 from .common.auth import current_user, router as auth_router
 from .tools.orders import setup_orders
+from .tools.after_sales import setup_after_sales
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
                 await checkpointer.setup()
                 await store.setup()
                 await setup_orders(conn)
+                await setup_after_sales(conn)
             finally:
                 await conn.execute("SELECT pg_advisory_unlock(hashtextextended('customer_chat:setup', 0))")
         app.state.db_pool = pool
