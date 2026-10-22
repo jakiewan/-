@@ -15,21 +15,22 @@ from ..memory.context import UserContext
 
 
 class MiniMaxClient:
-    def __init__(self, checkpointer: AsyncPostgresSaver, store: AsyncPostgresStore, *, retriever=None, db_pool=None):
+    def __init__(self, checkpointer: AsyncPostgresSaver, store: AsyncPostgresStore, *, retriever=None, db_pool=None, model=None):
         load_dotenv(PROJECT_ROOT / ".env")
-        api_key = os.getenv("MINIMAX_API_KEY")
-        if not api_key:
-            raise ValueError("请在项目根目录 .env 中配置 MINIMAX_API_KEY")
+        if model is None:
+            api_key = os.getenv("MINIMAX_API_KEY")
+            if not api_key:
+                raise ValueError("请在项目根目录 .env 中配置 MINIMAX_API_KEY")
 
-        model = ChatOpenAI(
-            model=os.getenv("MINIMAX_MODEL"), #type:ignore
-            api_key=api_key,    #type:ignore
-            base_url=os.getenv("MINIMAX_BASE_URL"),
-            timeout=60,
-            max_retries=0,
-            use_responses_api=False,
-            http_socket_options=(),
-        )
+            model = ChatOpenAI(
+                model=os.getenv("MINIMAX_MODEL"), #type:ignore
+                api_key=api_key,    #type:ignore
+                base_url=os.getenv("MINIMAX_BASE_URL"),
+                timeout=60,
+                max_retries=0,
+                use_responses_api=False,
+                http_socket_options=(),
+            )
         self.checkpointer = checkpointer
         self.db_pool = db_pool
         self.node_labels = {
@@ -69,7 +70,7 @@ class MiniMaxClient:
         result = await self.agent.ainvoke(inputs, config, context=UserContext(user_id=user_id, db_pool=self.db_pool))
         reply = result["messages"][-1].text
         if not reply.strip():
-            raise ValueError("MiniMax 未返回有效回复")
+            raise ValueError("模型未返回有效回复")
         return reply
 
     async def stream(self, message: str, thread_id: str, user_id: str) -> AsyncIterator[tuple[str, dict]]:
@@ -147,5 +148,5 @@ class MiniMaxClient:
                                     if message.text.strip() != streamed_text.strip():
                                         yield "delta", {"text": message.text}
         if not has_text:
-            raise ValueError("MiniMax 未返回有效回复")
+            raise ValueError("模型未返回有效回复")
         yield "progress", {"step": "save", "status": "done", "label": "检查点已保存（非节点）"}

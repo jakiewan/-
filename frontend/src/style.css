@@ -36,6 +36,11 @@ h2 { margin: 0 0 6px; font-size: 16px; }
 .user-avatar { background: #edf0f6; color: #66738b; }
 .user .bubble { background: #36745c; color: #fff; border-radius: 12px 0 12px 12px; }
 .chat-footer { padding: 20px 28px 18px; border-top: 1px solid #edf1ee; }
+.question-suggestions { margin-bottom: 12px; }
+.question-suggestions p { margin: 0 0 6px; color: #638176; font-size: 12px; }
+.question-suggestions ul { max-height: 180px; margin: 0; padding: 0; overflow-y: auto; list-style: none; border: 1px solid #e0e8e2; border-radius: 10px; }
+.question-suggestions button { width: 100%; padding: 9px 12px; border-radius: 0; background: #f2f5f3; color: #38644f; text-align: left; line-height: 1.6; overflow-wrap: anywhere; }
+.question-suggestions button:hover:not(:disabled) { background: #e5eee8; }
 .composer { display: flex; gap: 12px; padding: 6px; border: 1px solid #dce5de; border-radius: 12px; }
 .composer:focus-within { border-color: #739d87; }
 input { flex: 1; width: 0; min-width: 0; padding: 10px 9px; border: 0; background: transparent; color: #24372f; font-size: 14px; }

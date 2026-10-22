@@ -7,13 +7,23 @@ const checkingSession = ref(true)
 const switching = ref(false)
 const authError = ref('')
 const question = ref('')
+const questionInput = ref(null)
+const showCommonQuestions = ref(false)
 const sending = ref(false)
 const conversation = ref(null)
+const commonQuestions = [
+  '小米手机保修多久？',
+  '小米手机进水能免费保修吗？',
+  '小米手机保修需要什么材料？',
+  '小米15的屏幕参数是什么？',
+  '小米15支持多少瓦有线充电？',
+  '小米15 Pro有哪些运行内存和存储版本？',
+]
 const intentExamples = [
   ['咨询', '小米15 的屏幕参数是什么？'],
   ['投诉', '我要投诉，小米15 手机的售后问题一直没有人处理'],
-  ['售后', '我买的小米15 手机屏幕触摸失灵，想申请维修'],
-  ['订单查询', '帮我查询小米15 手机订单的物流状态'],
+  ['售后', '我要申请蓝牙耳机维修，原因是无法开机。'],
+  ['订单查询', '帮我查询最近一笔订单的物流状态。'],
   ['转人工', '小米15 手机的问题我想找真人处理，请帮我转人工客服'],
   ['闲聊', '你好，我是小米手机用户，来打个招呼'],
 ]
@@ -25,7 +35,19 @@ function changeUser(value) {
   user.value = value
   messages.value.splice(1)
   question.value = ''
+  showCommonQuestions.value = false
   authError.value = ''
+}
+
+function closeCommonQuestions(event) {
+  if (!event.relatedTarget?.closest('#question, .question-suggestions')) {
+    showCommonQuestions.value = false
+  }
+}
+
+function selectQuestion(text) {
+  question.value = text
+  questionInput.value.focus()
 }
 
 onMounted(async () => {
@@ -261,22 +283,23 @@ async function sendMessage(text = question.value.trim()) {
                 <div><dt>提交时间</dt><dd>{{ new Date(application.created_at).toLocaleString('zh-CN') }}</dd></div>
               </dl>
             </section>
-            <p v-if="message.sources?.length" class="data-sources">
-              数据来源：
-              <template v-for="source in message.sources" :key="source.url">
-                <a v-if="/^https?:\/\//.test(source.url)" :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.label }}</a>
-                <span v-else>{{ source.label || source.url }}</span>
-              </template>
-            </p>
             <p v-if="message.error" class="auth-error" role="alert">{{ message.error }}</p>
           </div>
         </article>
       </div>
 
-      <footer class="chat-footer">
+      <footer class="chat-footer" @focusout="closeCommonQuestions">
+        <div v-if="showCommonQuestions && !question.trim() && !sending && !switching" class="question-suggestions">
+          <p>常见问题 · 点击填入</p>
+          <ul aria-label="常见问题">
+            <li v-for="example in commonQuestions" :key="example">
+              <button type="button" @click="selectQuestion(example)">{{ example }}</button>
+            </li>
+          </ul>
+        </div>
         <form class="composer" @submit.prevent="sendMessage()">
           <label class="sr-only" for="question">输入你的问题</label>
-          <input id="question" v-model="question" type="text" placeholder="输入你的问题…" autocomplete="off" @keydown.enter="($event.isComposing || $event.keyCode === 229) && $event.preventDefault()" />
+          <input id="question" ref="questionInput" v-model="question" type="text" placeholder="输入你的问题…" autocomplete="off" @focus="showCommonQuestions = true" @keydown.enter="($event.isComposing || $event.keyCode === 229) && $event.preventDefault()" />
           <button type="submit" :disabled="sending || switching || !question.trim()">{{ sending ? '发送中…' : '发送' }} <span aria-hidden="true">↗</span></button>
         </form>
         <p class="input-hint">按 Enter 发送 <span>记忆按账号保存，刷新仅清空显示</span></p>

@@ -31,6 +31,8 @@ python -m backend.scripts.ingest_knowledge backend/data/xiaomi_phone_policies_cn
 
 ## 数据与来源
 
+可阅读的本地资料见 [小米国行手机知识资料](../data/knowledge/xiaomi-cn/README.md)，包含官方页面文字快照和现有 JSONL 整理稿。当前导入脚本仍读取 JSONL；新增 Markdown 尚未重新入库，不能把落盘当成已切换索引。聊天界面不展示资料来源及版本，内部证据仍保留这些信息供核查。
+
 采集、复核日期：2026-10-22。范围为小米中国大陆版手机，不把海外版数据混入国行。
 
 - 36 条参数：小米14、小米15、小米15 Pro、小米15 Ultra，各9个主题；包含官方参数页实际加载的资源 URL 与 SHA-256。

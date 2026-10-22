@@ -232,4 +232,5 @@ __marimo__/
 /.vscode/
 /checkpoint/
 !/backend/graph/intent.md
+!/backend/data/knowledge/xiaomi-cn/**/*.md
 !/Graph骨架技术方案.md

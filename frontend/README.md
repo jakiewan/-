@@ -40,7 +40,18 @@ npm run dev
 
 前端向 `/api/chat` 发送 POST 请求，Vite 开发代理将请求转发到 `http://127.0.0.1:8000`。开发环境无需浏览器跨域配置；生产部署时需要将 `/api` 转发到 FastAPI 服务。
 
-请求体：`{"message":"你好"}`，响应体为 `{"reply":"模型回复"}`。后端通过 `MiniMaxClient` 和 LangChain `create_agent` 调用固定型号 `MiniMax-Text-01`。接口文档：`http://127.0.0.1:8000/docs`。
+请求体：`{"message":"你好"}`，响应体为 `{"reply":"模型回复"}`。后端根据根目录 `.env` 的 `LLM_MODE` 选择 `MiniMaxClient` 或 `DeepSeekClient`，复用同一客服 Graph 和流式事件。接口文档：`http://127.0.0.1:8000/docs`。
+
+使用 DeepSeek V4.1-Flash-1017 时配置如下，重启后端生效：
+
+```dotenv
+LLM_MODE=deepseek
+DEEPSEEK_API_KEY=你的密钥
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-flash
+```
+
+`deepseek-flash` 是官方当前指向 V4.1-Flash-1017 的 API 型号名；后续可能更新，不是固定快照 ID。客户端使用非思考模式测试延迟，意图识别、问题重写、HyDE 和最终回答共用该模型，检索与业务流程保持原样。设置 `LLM_MODE=minimax` 可恢复原有 MiniMax 配置。
 
 ## 和风天气工具
 

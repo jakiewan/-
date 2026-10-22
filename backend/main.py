@@ -16,6 +16,7 @@ from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, Field
 
 from .utils.minimax_client import MiniMaxClient
+from .utils.deepseek_client import DeepSeekClient
 from .rag import FaqRetriever
 from .common.auth import current_user, router as auth_router
 from .tools.orders import setup_orders
@@ -62,7 +63,11 @@ async def lifespan(app: FastAPI):
                 retriever = await asyncio.to_thread(FaqRetriever)
             except Exception as exc:
                 logger.warning("知识检索初始化失败：%s", type(exc).__name__)
-            app.state.minimax = MiniMaxClient(checkpointer, store, retriever=retriever, db_pool=pool)
+            mode = os.getenv("LLM_MODE", "minimax")
+            client_class = {"minimax": MiniMaxClient, "deepseek": DeepSeekClient}.get(mode)
+            if client_class is None:
+                raise ValueError("LLM_MODE 仅支持 minimax 或 deepseek")
+            app.state.minimax = client_class(checkpointer, store, retriever=retriever, db_pool=pool)
             yield
         finally:
             if retriever is not None:
@@ -98,8 +103,8 @@ async def chat(request: ChatRequest, http_request: Request, user_id: str = Depen
     except ValueError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except APIError as exc:
-        logger.warning("MiniMax 调用失败：%s", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="MiniMax 调用失败，请检查密钥、模型权限和服务状态") from exc
+        logger.warning("模型调用失败：%s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="模型调用失败，请检查密钥、模型权限和服务状态") from exc
     except psycopg.Error as exc:
         logger.warning("会话存储失败：%s", type(exc).__name__)
         raise HTTPException(status_code=503, detail="会话存储暂时不可用，请稍后重试") from exc
@@ -124,7 +129,7 @@ async def stream_chat(request: ChatRequest, http_request: Request, user_id: str 
         except Exception as exc:
             logger.exception("流式对话失败：%s", type(exc).__name__)
             if isinstance(exc, APIError):
-                detail = "MiniMax 调用失败，请检查密钥、模型权限和服务状态"
+                detail = "模型调用失败，请检查密钥、模型权限和服务状态"
             elif isinstance(exc, psycopg.Error):
                 detail = "会话存储暂时不可用，请稍后重试"
             elif isinstance(exc, ValueError):
