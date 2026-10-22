@@ -10,6 +10,7 @@ from typing import Literal
 
 from ..memory.context import UserContext
 from ..memory.prompts import build_user_prompt
+from ..memory.profile import handle_profile
 from ..tools.orders import find_user_order
 
 from langgraph.config import get_stream_writer
@@ -63,6 +64,8 @@ async def recognize_intent(state: CustomerServiceState, *, model) -> dict:
                 "订单查询：查询本人购买商品的订单、发货、物流或处理进度；"
                 "转人工：明确要求真人客服，否定转人工不能归此类；"
                 "闲聊：普通问候、致谢、闲谈、天气、姓名和偏好等。寒暄附带明确业务时以业务为准。"
+                "用户单独要求保存、修改、删除或查询自己的长期画像（称呼、手机选购偏好、回复偏好）也归闲聊，"
+                "即使提到手机也不能归商品咨询；画像请求与推荐、查询、售后等业务混合时需澄清先处理哪项。"
                 "previous_exchange 和 pending_tasks 只帮助理解本轮的指代、确认或补参；本轮明确的新诉求优先。"
                 "例如上一轮询问手机型号，本轮回答 GC A10，或者上一轮询问咨询方面、本轮回答屏幕，均延续咨询，不能归闲聊。"
                 "pending_tasks 中存在售后任务时，补充退/换/修、订单商品、原因、确认或否定该订单、取消待提交申请均归售后。"
@@ -129,12 +132,15 @@ async def prepare_context(state: CustomerServiceState) -> dict:
     }
 
 
-async def handle_chitchat(state: CustomerServiceState) -> dict:
-    """准备普通闲聊上下文；显式档案操作和天气工具暂缓。"""
+async def handle_chitchat(state: CustomerServiceState, runtime: Runtime[UserContext], *, model) -> dict:
+    """固定寒暄直接回复；其余闲聊先处理明确的用户画像请求。"""
     reply = fixed_chitchat_reply(state["messages"][-1].text)
     if reply:
         return {"business_result": {"status": "ok", "kind": "fixed_chitchat", "message": reply}}
-    return {"business_result": {"status": "ok", "message": "普通闲聊；长期档案保存和删除、天气工具暂未开放，不能声称已经执行。"}}
+    profile_result = await handle_profile(state["messages"][-1].text, runtime.store, runtime.context.user_id, model=model)
+    if profile_result is not None:
+        return profile_result
+    return {"business_result": {"status": "ok", "message": "普通闲聊，本轮未修改长期画像；天气工具暂未开放，不能声称已经执行。"}}
 
 
 async def retrieve_knowledge(state: CustomerServiceState, *, pipeline) -> dict:
@@ -233,7 +239,7 @@ async def generate_answer(state: CustomerServiceState, runtime: Runtime[UserCont
         return {"answer_candidate": state["handoff_result"]["message"]}
     if state["business_result"].get("status") in ("unsupported", "failed"):
         return {"answer_candidate": state["business_result"]["message"]}
-    if state["business_result"].get("kind") in ("order", "after_sales", "fixed_chitchat"):
+    if state["business_result"].get("kind") in ("order", "after_sales", "fixed_chitchat", "profile"):
         return {"answer_candidate": state["business_result"]["message"]}
     if state["business_result"].get("graph_answer"):
         return {"answer_candidate": state["business_result"]["graph_answer"]}
@@ -287,7 +293,7 @@ async def validate_answer(state: CustomerServiceState) -> dict:
     """校验非空正文及确定性的能力边界；通过后追加最终消息，不宣称完成语义事实校验。"""
     answer = state["answer_candidate"].strip()
     expected = state["business_result"].get("message") if state["business_result"].get("status") in ("unsupported", "failed") else None
-    if state["business_result"].get("kind") in ("after_sales", "fixed_chitchat"):
+    if state["business_result"].get("kind") in ("after_sales", "fixed_chitchat", "profile"):
         expected = state["business_result"]["message"]
     if state["handoff_result"] is not None:
         expected = state["handoff_result"]["message"]
