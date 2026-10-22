@@ -150,18 +150,20 @@ async def handle_chitchat(state: CustomerServiceState) -> dict:
     return {"business_result": {"status": "ok", "message": "普通闲聊；长期档案保存和删除、天气工具暂未开放，不能声称已经执行。"}}
 
 
-async def retrieve_knowledge(state: CustomerServiceState, *, agent) -> dict:
-    """子图内部决策与工具结果不混入客服消息，只接收本轮结果与证据。"""
+async def retrieve_knowledge(state: CustomerServiceState, *, pipeline) -> dict:
+    """固定知识流水线只返回本轮业务结果、追问及真实证据。"""
     question = state["messages"][-1].text
-    # 句首明确的话题切换指令优先于旧任务，隐式切换仍由 Agent 判断。
+    # 明确换题先隔离旧任务；其他指代与补参由一次问题重写处理。
     new_topic = re.match(r"^(?:换个问题|另一个问题|不问这个了)(?:[，,。.!！：:\s]|$)", question.strip())
     pending = next((task for task in state["tasks"] if task["task_id"] == "knowledge"), {})
-    result = await agent.ainvoke({
+    result = await pipeline.ainvoke({
         # 简短确认和补参需要上一轮问题，不能只给最早的任务文本。
         "question": question, "history": "" if new_topic else previous_exchange(state["messages"]),
-        "pending": {} if new_topic else pending, "searches": [], "evidence": [], "decision": {}, "failed": False,
+        "pending": {} if new_topic else pending, "evidence": [], "failed": False,
     })
-    return result["output"]
+    output = result["output"]
+    output["tasks"] = [task for task in state["tasks"] if task["task_id"] != "knowledge"] + output["tasks"]
+    return output
 
 
 class OrderQuery(BaseModel):

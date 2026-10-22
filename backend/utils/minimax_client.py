@@ -34,8 +34,11 @@ class MiniMaxClient:
         self.db_pool = db_pool
         self.node_labels = {
             "prepare_context": "准备本轮状态", "recognize_intent": "LLM 意图识别",
-            "handle_chitchat": "闲聊处理", "retrieve_knowledge": "知识检索 Agent",
-            "rag_decide": "检索决策与证据评估", "rag_search": "执行真实知识检索", "rag_result": "整理知识证据",
+            "handle_chitchat": "闲聊处理", "retrieve_knowledge": "固定知识检索流程",
+            "rag_rewrite": "问题重写与条件提取", "faq_search": "检索 FAQ 标准答案",
+            "document_search": "原查询混合检索", "hyde_generate": "生成 HyDE 检索文本",
+            "hyde_search": "HyDE 混合检索", "rrf_fusion": "RRF 融合去重",
+            "rag_rerank": "知识正文精排", "rag_result": "整理知识证据",
             "query_order": "订单条件核对与查询", "handle_after_sales": "售后抽槽、确认与申请",
             "handle_complaint": "投诉转人工", "complex_agent": "复杂问题子图",
             "agent_decide": "Agent 决策", "execute_tools": "执行工具（暂未接入）",
@@ -93,8 +96,6 @@ class MiniMaxClient:
                         "label": self.node_labels.get(name, name),
                     }
                     if "input" in data:
-                        if name == "rag_search":
-                            node["tools"] = [data["input"]["decision"]["action"]]
                         node_starts[data["id"]] = perf_counter()
                         yield "node", {**node, "status": "running"}
                     else:

@@ -12,3 +12,4 @@ pymilvus==3.0.1
 redis==8.1.0
 langchain-huggingface==1.2.2
 sentence-transformers==3.4.1
+FlagEmbedding==1.4.2

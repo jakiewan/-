@@ -14,7 +14,7 @@ if __name__ == "__main__" and not __package__:
     __package__ = "backend.graph"
 
 from ..memory.context import UserContext
-from ..rag.agent import build_rag_agent
+from ..rag.agent import build_rag_pipeline
 from . import nodes
 from .state import BusinessRoute, CustomerServiceState
 
@@ -81,7 +81,7 @@ def build_workflow(*, model=None, checkpointer=None, store=None, retriever=None)
     builder.add_node("prepare_context", nodes.prepare_context)  # 准备本轮上下文，重置临时结果并保留有效任务槽位。
     builder.add_node("recognize_intent", partial(nodes.recognize_intent, model=model))  # LLM 识别单个主意图，结果由 Schema 校验。
     builder.add_node("handle_chitchat", nodes.handle_chitchat)  # 准备普通闲聊上下文；显式档案操作和天气暂缓。
-    builder.add_node("retrieve_knowledge", partial(nodes.retrieve_knowledge, agent=build_rag_agent(model, retriever)))  # 知识 Agent 选择 FAQ 或文档工具，返回本轮证据。
+    builder.add_node("retrieve_knowledge", partial(nodes.retrieve_knowledge, pipeline=build_rag_pipeline(model, retriever)))  # 固定先查 FAQ，未命中再查文档并融合、精排。
     builder.add_node("query_order", partial(nodes.query_order, model=model))  # 抽取可选单号，查询当前登录账号名下的订单。
     builder.add_node("handle_after_sales", partial(nodes.handle_after_sales, model=model))  # 节点内抽槽、补参，用户确认后提交售后申请。
     builder.add_node("handle_complaint", nodes.handle_complaint)  # 整理投诉诉求、建议和证据。
