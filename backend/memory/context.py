@@ -8,3 +8,5 @@ MEMORY_NAMESPACE = ("user_memories",)
 class UserContext:
     user_id: str
     db_pool: AsyncConnectionPool | None = None
+    conversation_id: str | None = None
+    conversation_version: int | None = None

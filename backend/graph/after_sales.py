@@ -199,7 +199,7 @@ async def handle_after_sales(state: CustomerServiceState, runtime: Runtime[UserC
         if confirmed and decision.decision == "confirm" and not changed and slots.get("confirmation_message") == last_answer:
             application = await submit_after_sales(pool, user_id, order_no=order["order_no"],
                 item_sku=slots["item_sku"], action=slots["action"], reason=slots.get("reason", ""),
-                request_id=slots["request_id"], expected_items=items)
+                request_id=slots["request_id"], expected_items=items, context=runtime.context)
             slots.pop("confirmation_message", None)
             prefix = "该申请已有记录，本次未重复创建。" if application["existing"] else "已提交申请，待审核。"
             product_summary = "；".join(f"{item['name']}（数量 {item['quantity']}）" for item in application["items"])

@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test'
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/conversation', route => route.fulfill({ json: {
+    conversation: { id: '11111111-1111-4111-8111-111111111111', mode: 'ai', version: 0, event_seq: 0 }, messages: [],
+  } }))
+  await page.route('**/api/conversations/*/events?*', route => route.fulfill({ contentType: 'text/event-stream', body: ': heartbeat\n\n' }))
   await page.route('**/api/auth/me', route => route.fulfill({ json: { username: 'alice' } }))
   await page.route('**/api/chat/stream', route => route.fulfill({
     contentType: 'text/event-stream',
@@ -73,7 +77,8 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await send.click()
   const response = await reply
   expect(response.request().method()).toBe('POST')
-  expect(response.request().postDataJSON()).toEqual({ message: '如何查询订单？' })
+  expect(response.request().postDataJSON()).toMatchObject({ message: '如何查询订单？', conversation_id: '11111111-1111-4111-8111-111111111111' })
+  expect(response.request().postDataJSON().client_message_id).toMatch(/^[0-9a-f-]{36}$/)
   expect(response.status()).toBe(200)
   expect(response.headers()['content-type']).toContain('text/event-stream')
   await expect(messages).toHaveCount(3)
@@ -105,8 +110,13 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await input.fill('中文输入中')
   await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true })
   await expect(messages).toHaveCount(5)
+  await page.route('**/api/conversation', route => route.fulfill({ json: {
+    conversation: { id: '11111111-1111-4111-8111-111111111111', mode: 'ai', version: 0, event_seq: 2 },
+    messages: [{ id: '1', role: 'user', text: '已保存的问题' }, { id: '2', role: 'assistant', text: '已保存的回复' }],
+  } }))
   await page.reload()
-  await expect(messages).toHaveCount(1)
+  await expect(messages).toHaveCount(3)
+  await expect(messages.last()).toContainText('已保存的回复')
 })
 
 test('售后确认按钮发送确认提交，旧确认失效且提交期间不会重复发送', async ({ page }) => {

@@ -1,19 +1,16 @@
 import asyncio
 import logging
 import os
-import json
-from contextlib import aclosing, asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
-import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
+from urllib.parse import urlsplit
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.store.postgres.aio import AsyncPostgresStore
-from openai import APIError
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
-from pydantic import BaseModel, Field
 
 from .utils.minimax_client import MiniMaxClient
 from .utils.deepseek_client import DeepSeekClient
@@ -21,6 +18,9 @@ from .rag import FaqRetriever
 from .common.auth import current_user, router as auth_router
 from .tools.orders import setup_orders
 from .tools.after_sales import setup_after_sales
+from .tools.conversations import setup_conversations
+from .conversation_service import MessageInput, accept_message, reply_events, process_queue, sse, router as conversation_router
+from .utils.feishu_client import notification_worker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,11 +53,10 @@ async def lifespan(app: FastAPI):
                 await store.setup()
                 await setup_orders(conn)
                 await setup_after_sales(conn)
+                await setup_conversations(conn)
             finally:
                 await conn.execute("SELECT pg_advisory_unlock(hashtextextended('customer_chat:setup', 0))")
         app.state.db_pool = pool
-        # 请求锁最多占四个连接，留一个给 Saver/Store，避免耗尽连接池。
-        app.state.chat_slots = asyncio.Semaphore(4)
         retriever = None
         try:
             try:
@@ -69,7 +68,15 @@ async def lifespan(app: FastAPI):
             if client_class is None:
                 raise ValueError("LLM_MODE 仅支持 minimax 或 deepseek")
             app.state.minimax = client_class(checkpointer, store, retriever=retriever, db_pool=pool)
-            yield
+            workers = [asyncio.create_task(process_queue(app)), asyncio.create_task(notification_worker(pool))]
+            try:
+                yield
+            finally:
+                for worker in workers:
+                    worker.cancel()
+                for worker in workers:
+                    with suppress(asyncio.CancelledError):
+                        await worker
         finally:
             if retriever is not None:
                 await asyncio.to_thread(retriever.close)
@@ -79,67 +86,40 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(auth_router)
 logger = logging.getLogger(__name__)
 
-
-class ChatRequest(BaseModel):
-    message: str = Field(pattern=r"\S")
+app.include_router(conversation_router)
 
 
-@asynccontextmanager
-async def conversation_lock(app: FastAPI, thread_id: str):
-    async with app.state.chat_slots:
-        async with app.state.db_pool.connection() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (thread_id,)
-                )
-                yield
+@app.middleware("http")
+async def verify_origin(request: Request, call_next):
+    origin = request.headers.get("origin")
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and origin:
+        public = urlsplit(os.getenv("SUPPORT_PUBLIC_BASE_URL", ""))
+        allowed = f"{public.scheme}://{public.netloc}" if public.netloc else None
+        if origin != allowed and origin != f"{request.url.scheme}://{request.headers.get('host')}":
+            return JSONResponse({"detail": "请求来源不允许"}, status_code=403)
+    return await call_next(request)
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest, http_request: Request, user_id: str = Depends(current_user)) -> dict[str, str]:
-    thread_id = f"chat:{user_id}"
-    try:
-        async with conversation_lock(http_request.app, thread_id):
-            return {"reply": await http_request.app.state.minimax.chat(request.message, thread_id, user_id)}
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except APIError as exc:
-        logger.warning("模型调用失败：%s", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="模型调用失败，请检查密钥、模型权限和服务状态") from exc
-    except psycopg.Error as exc:
-        logger.warning("会话存储失败：%s", type(exc).__name__)
-        raise HTTPException(status_code=503, detail="会话存储暂时不可用，请稍后重试") from exc
+async def chat(body: MessageInput, request: Request, user_id: str = Depends(current_user)):
+    cid, message = await accept_message(request, body, user_id)
+    reply = "消息已保存，正在等待人工处理。"
+    async for kind, data in reply_events(request.app, cid, message, request):
+        if kind == "final":
+            reply = data["text"]
+        elif kind == "error":
+            raise HTTPException(503, data["message"])
+    return {"reply": reply}
 
 
 @app.post("/api/chat/stream")
-async def stream_chat(request: ChatRequest, http_request: Request, user_id: str = Depends(current_user)):
-    def event(name: str, data: dict) -> str:
-        return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+async def stream_chat(body: MessageInput, request: Request, user_id: str = Depends(current_user)):
+    cid, message = await accept_message(request, body, user_id)
 
     async def generate():
-        yield event("start", {})
-        yield event("progress", {"step": "queue", "label": "等待处理（非节点）", "status": "running"})
-        try:
-            thread_id = f"chat:{user_id}"
-            async with conversation_lock(http_request.app, thread_id):
-                yield event("progress", {"step": "queue", "label": "等待处理（非节点）", "status": "done"})
-                async with aclosing(http_request.app.state.minimax.stream(request.message, thread_id, user_id)) as events:
-                    async for name, data in events:
-                        yield event(name, data)
-            yield event("done", {})
-        except Exception as exc:
-            logger.exception("流式对话失败：%s", type(exc).__name__)
-            if isinstance(exc, APIError):
-                detail = "模型调用失败，请检查密钥、模型权限和服务状态"
-            elif isinstance(exc, psycopg.Error):
-                detail = "会话存储暂时不可用，请稍后重试"
-            elif isinstance(exc, ValueError):
-                detail = "模型未返回有效结果，请重试"
-            else:
-                detail = "对话处理失败，请稍后重试"
-            yield event("error", {"message": detail})
+        async for kind, data in reply_events(request.app, cid, message, request):
+            yield sse(kind, data)
 
     return StreamingResponse(generate(), media_type="text/event-stream", headers={
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no",
+        "Cache-Control": "no-cache", "X-Accel-Buffering": "no",
     })

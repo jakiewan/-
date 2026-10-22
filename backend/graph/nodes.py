@@ -341,7 +341,16 @@ async def check_handoff(state: CustomerServiceState) -> dict:
     return {"requires_handoff": state["requires_handoff"] or state["intent"] == "转人工"}
 
 
-async def handoff(state: CustomerServiceState) -> dict:
-    """返回人工转接等待文案。"""
-    # shortcut: 目前仅展示等待文案，接入真实坐席时替换为客服系统返回的状态。
-    return {"handoff_result": {"status": "demo_waiting", "message": "人工客服转接中，请稍候。"}}
+async def handoff(state: CustomerServiceState, runtime: Runtime[UserContext]) -> dict:
+    """登记原会话的人工请求；通知和实际接管由会话服务分别处理。"""
+    from ..tools.conversations import locked_conversation, request_handoff
+    context = runtime.context
+    if context.conversation_id is None or context.db_pool is None:
+        return {"handoff_result": {"status": "unavailable", "message": "当前未连接人工会话服务，暂时无法转接。"}}
+    async with context.db_pool.connection() as conn:
+        async with conn.transaction():
+            conversation = await locked_conversation(conn, context.conversation_id)
+            if conversation["version"] != context.conversation_version:
+                return {"handoff_result": {"status": "interrupted", "message": "会话处理方式已更新。"}}
+            await request_handoff(conn, conversation, state.get("handoff_reason") or "用户请求人工客服")
+    return {"handoff_result": {"status": "waiting_human", "message": "已登记转人工请求，正在等待客服接管。"}}

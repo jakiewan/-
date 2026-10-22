@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from .conversations import check_execution
 
 ACTION_LABELS = {"return": "退货", "exchange": "换货", "repair": "维修"}
 ELIGIBLE_STATUSES = ("paid", "processing", "shipped", "completed")
@@ -33,7 +34,8 @@ async def setup_after_sales(conn):
 
 
 async def submit_after_sales(pool, user_id: str, *, order_no: str, item_sku: str,
-                             action: str, reason: str, request_id: str, expected_items: list | None = None) -> dict:
+                             action: str, reason: str, request_id: str, expected_items: list | None = None,
+                             context=None) -> dict:
     """锁定本人订单后创建申请；相同动作返回原单，不同动作明确拒绝，避免误报提交成功。"""
     if not user_id or action not in ACTION_LABELS:
         raise ValueError("售后申请身份或类型无效")
@@ -42,6 +44,7 @@ async def submit_after_sales(pool, user_id: str, *, order_no: str, item_sku: str
         raise ValueError("整单申请仅支持退货，换货或维修请选择一件商品")
     async with pool.connection() as conn:
         async with conn.transaction():
+            await check_execution(conn, context)
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute("""
                     SELECT status, items, is_demo FROM customer_chat.orders

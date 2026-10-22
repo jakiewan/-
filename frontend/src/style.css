@@ -238,3 +238,9 @@ h2 { margin: 0; font-size: 16px; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+.conversation-controls { display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 8px 20px; font-size: 13px; }
+.conversation-controls button { padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; color: #1e293b; cursor: pointer; }
+.conversation-controls button:disabled { cursor: default; opacity: .6; }
+.message.system .bubble { color: #64748b; background: #f1f5f9; }
+.message.agent .bubble { border-left: 3px solid #2563eb; }

@@ -1,6 +1,7 @@
 <script setup>
-import { nextTick, onMounted, ref } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import LoginForm from './LoginForm.vue'
+import SupportConversation from './SupportConversation.vue'
 
 const user = ref(null)
 const checkingSession = ref(true)
@@ -11,6 +12,99 @@ const questionInput = ref(null)
 const showCommonQuestions = ref(false)
 const sending = ref(false)
 const conversation = ref(null)
+const session = ref(null)
+const loadingHistory = ref(false)
+const supportView = ref(new URLSearchParams(location.search).has('support'))
+let eventSource
+let activeRequest
+let accountVersion = 0
+
+function mergeMessage(message) {
+  if (message.reply_to) {
+    const request = messages.value.find(item => item.id === message.reply_to)
+    if (request) request.status = 'succeeded'
+  }
+  const found = messages.value.find(item =>
+    (message.id && item.id === message.id) ||
+    (message.client_message_id && item.client_message_id === message.client_message_id && item.role === message.role) ||
+    (message.reply_to && item.reply_to === message.reply_to && item.role === 'assistant'))
+  const value = { ...message, saved: true, pending: false }
+  if (found) Object.assign(found, value)
+  else messages.value.push(value)
+}
+
+function applyState(value) {
+  session.value = value
+  if (value.mode !== 'ai') {
+    messages.value.forEach(message => {
+      message.confirmationRequired = false
+      if (['queued', 'running'].includes(message.status)) message.status = 'interrupted'
+    })
+    activeRequest?.abort()
+  }
+}
+
+async function loadHistory() {
+  const version = accountVersion
+  loadingHistory.value = true
+  try {
+    const response = await fetch('/api/conversation', { signal: AbortSignal.timeout(8000) })
+    if (!response.ok) throw new Error('读取会话历史失败')
+    const data = await response.json()
+    if (version !== accountVersion) return
+    messages.value.splice(1)
+    data.messages.forEach(mergeMessage)
+    applyState(data.conversation)
+    eventSource?.close()
+    eventSource = new EventSource(`/api/conversations/${data.conversation.id}/events?after=${data.conversation.event_seq}`)
+    eventSource.addEventListener('message', event => {
+      if (version !== accountVersion) return
+      mergeMessage(JSON.parse(event.data))
+      nextTick(() => { if (conversation.value) conversation.value.scrollTop = conversation.value.scrollHeight })
+    })
+    eventSource.addEventListener('state', event => { if (version === accountVersion) applyState(JSON.parse(event.data)) })
+    eventSource.addEventListener('reset', () => { eventSource.close(); loadHistory() })
+    eventSource.addEventListener('auth_expired', () => changeUser(null))
+    eventSource.addEventListener('run_error', event => {
+      const data = JSON.parse(event.data)
+      const message = messages.value.find(item => item.id === data.request_id)
+      if (message) { message.error = data.message; message.status = 'failed' }
+    })
+    await nextTick()
+    if (conversation.value) conversation.value.scrollTop = conversation.value.scrollHeight
+  } catch (error) {
+    if (version === accountVersion) authError.value = `${error.message}，请刷新重试`
+  } finally {
+    if (version === accountVersion) loadingHistory.value = false
+  }
+}
+
+function openSupport() {
+  supportView.value = true
+  eventSource?.close()
+  history.replaceState(null, '', '/?support')
+}
+
+function backToChat() {
+  supportView.value = false
+  history.replaceState(null, '', '/')
+  loadHistory()
+}
+
+async function requestHuman() {
+  if (!session.value || session.value.mode === 'waiting_human' || session.value.mode === 'human') return
+  try {
+    const response = await fetch(`/api/conversations/${session.value.id}/handoff`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version: session.value.version }),
+    })
+    if (!response.ok) throw new Error((await response.json()).detail || '转人工失败')
+    applyState(await response.json())
+  } catch (error) { authError.value = error.message }
+}
+
+onUnmounted(() => { eventSource?.close(); activeRequest?.abort() })
+
 const commonQuestions = [
   '小米手机保修多久？',
   '小米手机进水能免费保修吗？',
@@ -29,11 +123,16 @@ const messages = ref([
 ])
 
 function changeUser(value) {
+  accountVersion += 1
+  eventSource?.close()
+  activeRequest?.abort()
+  session.value = null
   user.value = value
   messages.value.splice(1)
   question.value = ''
   showCommonQuestions.value = false
   authError.value = ''
+  if (value && !(value.is_support && supportView.value)) loadHistory()
 }
 
 function closeCommonQuestions(event) {
@@ -73,24 +172,32 @@ async function logout() {
   }
 }
 
-async function sendMessage(text = question.value.trim()) {
-  if (!text || sending.value || switching.value || !user.value) return
+async function sendMessage(text = question.value.trim(), clientId = crypto.randomUUID()) {
+  if (!text || sending.value || switching.value || loadingHistory.value || !user.value) return
 
   showCommonQuestions.value = false
   sending.value = true
-  messages.value.push({ role: 'user', text })
+  let sent = messages.value.find(item => item.client_message_id === clientId)
+  if (!sent) {
+    sent = { role: 'user', text, client_message_id: clientId }
+    messages.value.push(sent)
+  }
   const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], sources: [], orders: [], applications: [], pending: true }) - 1
   const reply = messages.value[replyIndex]
+  reply.retry = { text, clientId }
+  reply.reply_to = sent.id
   const startedAt = performance.now()
   question.value = ''
   await nextTick()
   conversation.value.scrollTop = conversation.value.scrollHeight
 
   try {
+    activeRequest = new AbortController()
     const response = await fetch('/api/chat/stream', {
+      signal: activeRequest.signal,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, client_message_id: clientId, ...(session.value ? { conversation_id: session.value.id } : {}) }),
     })
     if (response.status === 401) {
       changeUser(null)
@@ -115,6 +222,9 @@ async function sendMessage(text = question.value.trim()) {
           const raw = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n')
           if (!raw) continue
           const data = JSON.parse(raw)
+          if (name === 'start' && data.message_id) { sent.id = data.message_id; reply.reply_to = data.message_id }
+          if (name === 'final') { Object.assign(reply, data, { saved: true, pending: false }) }
+          if (name === 'manual') { messages.value = messages.value.filter(item => item !== reply || item.text || item.saved) }
           if (name === 'intent') reply.intent = data
           if (name === 'sources') {
             for (const source of data.sources) {
@@ -134,7 +244,7 @@ async function sendMessage(text = question.value.trim()) {
             if (step) Object.assign(step, data)
             else reply.steps.push(data)
           }
-          if (name === 'delta' && data.text) {
+          if (name === 'delta' && data.text && !reply.saved) {
             reply.firstTokenMs ??= Math.round(performance.now() - startedAt)
             reply.text += data.text
           }
@@ -154,6 +264,10 @@ async function sendMessage(text = question.value.trim()) {
       reader.releaseLock()
     }
   } catch (error) {
+    if (error.name === 'AbortError' && session.value?.mode !== 'ai') {
+      messages.value = messages.value.filter(item => item !== reply || item.saved)
+      return
+    }
     reply.error = `暂时无法获取回复。${error.message}`
     for (const step of [...reply.steps, ...reply.nodes]) {
       if (step.status === 'running') step.status = 'error'
@@ -187,6 +301,7 @@ async function sendMessage(text = question.value.trim()) {
     <p v-if="checkingSession" role="status">正在读取登录状态…</p>
     <LoginForm v-else-if="!user" :message="authError" @logged-in="changeUser" />
 
+    <SupportConversation v-else-if="user.is_support && supportView" @logout="logout" @back="backToChat" />
     <div v-else class="workspace">
       <aside class="workspace-sidebar" aria-label="服务导航">
         <div class="sidebar-label">工作空间</div>
@@ -195,6 +310,7 @@ async function sendMessage(text = question.value.trim()) {
         <p class="sidebar-footer">SERVICE HUB <span>智能服务 · 轻松沟通</span></p>
         <div class="account-controls">
           <span class="account-name">{{ user.username }}</span>
+          <button v-if="user.is_support" class="switch-account" type="button" @click="openSupport">客服工作台</button>
           <button class="switch-account" type="button" :disabled="sending || switching" @click="logout">{{ switching ? '退出中…' : '退出 / 切换账号' }}</button>
         </div>
       </aside>
@@ -203,9 +319,13 @@ async function sendMessage(text = question.value.trim()) {
         <div class="avatar service-avatar" aria-hidden="true">✦</div>
         <div>
           <h2>智能服务助手 <span class="assistant-badge">AI</span></h2>
-          <p><span class="status-dot"></span>{{ sending ? '正在为您处理问题' : '商品咨询 · 订单查询 · 售后协助' }}</p>
+          <p><span class="status-dot"></span>{{ session?.mode === 'human' ? '人工客服接待中' : session?.mode === 'waiting_human' ? '已登记，等待人工接管' : sending ? '正在为您处理问题' : '商品咨询 · 订单查询 · 售后协助' }}</p>
         </div>
       </header>
+      <div class="conversation-controls">
+        <span v-if="loadingHistory">正在恢复会话历史…</span>
+        <button type="button" :disabled="!session || ['waiting_human', 'human'].includes(session.mode)" @click="requestHuman">{{ session?.mode === 'waiting_human' ? '等待人工接管' : session?.mode === 'human' ? '人工接待中' : '转人工客服' }}</button>
+      </div>
       <p v-if="authError" class="auth-error" role="alert">{{ authError }}</p>
 
       <div ref="conversation" class="conversation" :class="{ 'is-empty': messages.length === 1 }" role="log" aria-label="聊天记录" aria-live="polite" tabindex="0">
@@ -216,11 +336,11 @@ async function sendMessage(text = question.value.trim()) {
           <h2>您好，有什么可以帮您？</h2>
         </div>
         <article v-for="(message, index) in messages" :key="index" class="message" :class="message.role">
-          <div class="avatar" :class="message.role === 'assistant' ? 'service-avatar' : 'user-avatar'" aria-hidden="true">
-            {{ message.role === 'assistant' ? '客' : '我' }}
+          <div class="avatar" :class="message.role !== 'user' ? 'service-avatar' : 'user-avatar'" aria-hidden="true">
+            {{ message.role === 'user' ? '我' : '客' }}
           </div>
           <div class="message-content" :class="{ 'has-business-card': message.orders?.length || message.applications?.length }">
-            <span class="sender">{{ message.role === 'assistant' ? '电商客服助手' : '你' }}</span>
+            <span class="sender">{{ { assistant: '电商客服助手', user: '你', agent: '人工客服', system: '服务通知' }[message.role] }}</span>
             <details v-if="message.steps" class="stream-progress">
               <summary><span class="trace-status" :class="{ pending: message.pending, failed: message.error }" aria-hidden="true"></span><span>{{ message.error ? '处理未完成' : message.pending ? '正在处理' : '处理完成' }}</span><span v-if="message.intent" class="trace-intent">{{ message.intent.intent }}</span><span v-if="message.elapsedMs" class="trace-duration">{{ (message.elapsedMs / 1000).toFixed(2) }} 秒</span><span class="trace-toggle">执行详情 <span aria-hidden="true">⌄</span></span></summary>
               <div class="trace-details">
@@ -247,6 +367,7 @@ async function sendMessage(text = question.value.trim()) {
             </details>
             <p v-if="message.text" class="bubble">{{ message.text }}<span v-if="message.pending" class="stream-cursor" aria-hidden="true">▍</span></p>
             <p v-else-if="message.pending" class="bubble">正在处理…</p>
+            <small v-if="message.role === 'user' && ['queued', 'running'].includes(message.status)">已接收，正在处理</small>
             <section v-for="order in message.orders" :key="order.order_no" class="order-card" :aria-label="`订单 ${order.order_no}`">
               <header class="order-card-heading">
                 <h3>订单 {{ order.order_no }}</h3>
@@ -275,7 +396,7 @@ async function sendMessage(text = question.value.trim()) {
                 </li>
               </ol>
             </section>
-            <p v-if="message.confirmationRequired && index === messages.length - 1 && !message.pending && !message.error">
+            <p v-if="session?.mode !== 'human' && session?.mode !== 'waiting_human' && message.confirmationRequired && index === messages.length - 1 && !message.pending && !message.error">
               <button type="button" :disabled="sending || switching" @click="sendMessage('确认提交')">确认提交</button>
             </p>
             <section v-for="application in message.applications" :key="application.application_no" class="order-card after-sales-card" :aria-label="`售后申请 ${application.application_no}`">
@@ -295,7 +416,7 @@ async function sendMessage(text = question.value.trim()) {
                 <div><dt>提交时间</dt><dd>{{ new Date(application.created_at).toLocaleString('zh-CN') }}</dd></div>
               </dl>
             </section>
-            <p v-if="message.error" class="auth-error" role="alert">{{ message.error }}</p>
+            <p v-if="message.error" class="auth-error" role="alert">{{ message.error }} <button v-if="message.retry" type="button" :disabled="sending" @click="sendMessage(message.retry.text, message.retry.clientId)">重新获取结果</button></p>
           </div>
         </article>
       </div>
@@ -312,9 +433,9 @@ async function sendMessage(text = question.value.trim()) {
         <form class="composer" @submit.prevent="sendMessage()">
           <label class="sr-only" for="question">输入你的问题</label>
           <input id="question" ref="questionInput" v-model="question" type="text" placeholder="输入问题，让我们为您解答…" autocomplete="off" @focus="showCommonQuestions = true" @click="showCommonQuestions = true" @keydown.enter="($event.isComposing || $event.keyCode === 229) && $event.preventDefault()" />
-          <button type="submit" :disabled="sending || switching || !question.trim()">{{ sending ? '发送中…' : '发送' }} <span aria-hidden="true">↗</span></button>
+          <button type="submit" :disabled="sending || switching || loadingHistory || !question.trim()">{{ sending ? '发送中…' : '发送' }} <span aria-hidden="true">↗</span></button>
         </form>
-        <p class="input-hint">按 Enter 发送 <span>记忆按账号保存，刷新仅清空显示</span></p>
+        <p class="input-hint">按 Enter 发送 <span>会话按账号保存，刷新可恢复历史</span></p>
       </footer>
       </section>
     </div>

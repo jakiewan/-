@@ -74,8 +74,21 @@ class MiniMaxClient:
             raise ValueError("模型未返回有效回复")
         return reply
 
-    async def stream(self, message: str, thread_id: str, user_id: str) -> AsyncIterator[tuple[str, dict]]:
-        inputs, config = await self._input(message, thread_id)
+    def final_payload(self, state):
+        result = state.get("business_result", {})
+        evidence = state.get("evidence", [])
+        return {
+            "text": state["messages"][-1].text,
+            "graph_message_id": state["messages"][-1].id,
+            "orders": [result["order"]] if result.get("order") else [],
+            "applications": [result["application"]] if result.get("application") else [],
+            "confirmationRequired": bool(result.get("confirmation_required")),
+            "sources": [{"label": item["title"], "url": item.get("source", ""),
+                         "evidence_id": item["evidence_id"]} for item in evidence],
+        }
+
+    async def stream(self, message: str, thread_id: str, user_id: str, *, run=None, context=None) -> AsyncIterator[tuple[str, dict]]:
+        inputs, config = (run["inputs"], run["config"]) if run else await self._input(message, thread_id)
         node_starts = {}
         intent_data = {}
         has_text = False
@@ -86,7 +99,7 @@ class MiniMaxClient:
         confirmation_required = False
         # 只发送校验后的最终消息，分类、路由和工具规划的模型输出不会成为正文。
         async with aclosing(self.agent.astream(
-            inputs, config, context=UserContext(user_id=user_id, db_pool=self.db_pool),
+            inputs, config, context=context or UserContext(user_id=user_id, db_pool=self.db_pool),
             stream_mode=["tasks", "updates", "custom"], subgraphs=True,
         )) as events:
             async for namespace, mode, data in events:
@@ -148,6 +161,11 @@ class MiniMaxClient:
                                     # 已经逐块流出且内容相同则不再整块推一次，避免正文重复。
                                     if message.text.strip() != streamed_text.strip():
                                         yield "delta", {"text": message.text}
+        if run:
+            snapshot = await self.agent.aget_state(config)
+            payload = self.final_payload(snapshot.values)
+            has_text = bool(payload["text"])
+            yield "final", payload
         if not has_text:
             raise ValueError("模型未返回有效回复")
         yield "progress", {"step": "save", "status": "done", "label": "检查点已保存（非节点）"}

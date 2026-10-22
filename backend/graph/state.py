@@ -20,6 +20,7 @@ class IntentTask(TypedDict):
 
 
 class CustomerServiceState(AgentState):
+    conversation_version: int
     intent: Intent
     intent_reason: str
     intent_confidence: float | None
