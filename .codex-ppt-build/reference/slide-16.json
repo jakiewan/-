@@ -1,6 +1,0 @@
-{"schema":"openai.presentation.layout/v5","unit":"px","slide":{"id":"sl/gny5sjyp","index":15,"layout":{"id":"ly/ux4ruhcv","name":"master-page660"},"backgroundColor":"rgba(255,255,255,1)","position":{"left":0,"top":0,"width":1280,"height":720}},
-"elements":[
-{"id":"im/9kbilsr2","kind":"image","name":"图片 788","position":{"left":0,"top":0,"width":1279.97,"height":719.96}},
-{"id":"sh/qlwrup0b","kind":"textbox","name":"文本框 789","position":{"left":188.3,"top":280.78,"width":984.81,"height":125.78},"text":"感谢聆听,欢迎提问","style":{"fontSize":108,"typeface":"微软雅黑","color":"#041B4B","bold":true},"geometry":"rect","lineWidth":0},
-{"id":"sh/do7a54zm","kind":"textbox","name":"文本框 792","position":{"left":337.55,"top":586.81,"width":631.6,"height":47.27},"text":"答辩人：[你的名字] | 2026年X月X日","style":{"fontSize":39.07,"typeface":"微软雅黑","color":"#111B3E"},"geometry":"rect","lineWidth":0}
-]}

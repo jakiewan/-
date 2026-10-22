@@ -229,6 +229,7 @@ __marimo__/
 .DS_Store
 /.history/
 /.learnings/
+/.codex-ppt-build/
 /.vscode/
 /checkpoint/
 !/backend/graph/intent.md
