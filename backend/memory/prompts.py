@@ -1,29 +1,16 @@
 import json
 
-from langchain.agents.middleware import ModelRequest, dynamic_prompt
-
-from .context import MEMORY_NAMESPACE, UserContext
+from .context import MEMORY_NAMESPACE
 
 
-async def build_user_prompt(state, store, user_id: str, tools) -> str:
+async def build_user_prompt(state, store, user_id: str) -> str:
     assert store is not None
     item = await store.aget(MEMORY_NAMESPACE, user_id)
     profile = item.value if item else {}
-    tool_names = [tool.get("name", tool.get("type")) if isinstance(tool, dict) else tool.name for tool in tools]
     weather_instructions = (
-        "天气问题属于闲聊，但必须调用 get_weather 获取当前天气，缺少城市时追问。"
-        "该工具只支持当前实时天气，未来或历史天气需说明暂不支持。"
-        "成功后注明和风天气、查询时间和来源，保留归因；失败时说明失败，不编造天气。"
-        if "get_weather" in tool_names else
         "当前天气工具暂未接入新图，不能查询实时天气、预报或历史天气，也不能编造天气。"
     )
     memory_instructions = (
-        "用户明确要求长期记住或更正姓名、语言、回答偏好时，调用 remember_user_info；"
-        "用户明确要求删除这些长期信息时，调用 forget_user_info。"
-        "同一次保存应在一个工具调用中传入全部明确字段；必须实际调用工具，不能输出代码或函数调用文本代替。"
-        "只有工具成功返回后才能声称已经保存或删除。不要从假设、转述或助手回答中提取档案。"
-        "用户当前明确更正的信息优先于旧档案；删除长期档案不等于删除历史聊天记录。"
-        if {"remember_user_info", "forget_user_info"}.issubset(tool_names) else
         "显式长期档案保存、修改和删除功能暂未开放。遇到此类请求直接说明暂不支持，"
         "不能声称已经保存、更新或删除，也不要让用户再次确认后承诺执行。"
         "可以使用当前对话和已有用户档案回答，但不能把会话上下文记忆说成长期档案写入。"
@@ -41,7 +28,7 @@ async def build_user_prompt(state, store, user_id: str, tools) -> str:
         "缺少依据时说明需要核实，不编造数值和店铺承诺，不把通用经验当作本店政策。"
         "查订单、办理售后、创建客服工单或转人工，必须以对应工具的真实返回为准；"
         "当前没有相应工具或查询失败时，先说明无法直接查询或办理，不得承诺补充信息后就能办理。"
-        "你本轮实际可调用的工具仅有：" + json.dumps(tool_names, ensure_ascii=False) + "。"
+        "你本轮实际可调用的工具仅有：[]。"
         "长期记忆工具只能保存或删除用户档案，不能查询商品、库存、订单或办理售后。"
         f"{weather_instructions}"
         f"{memory_instructions}"
@@ -74,11 +61,4 @@ async def build_user_prompt(state, store, user_id: str, tools) -> str:
         "应回答'我目前无法查询店铺实时价格和库存，请以商品详情页为准'；"
         "用户要求查订单物流时，应回答'我目前无法直接查询订单物流，请在订单详情页查看'。"
         "这些情况下不能用追问型号、订单号来代替说明当前能力限制。"
-    )
-
-
-@dynamic_prompt
-async def user_memory_prompt(request: ModelRequest[UserContext]) -> str:
-    return await build_user_prompt(
-        request.state, request.runtime.store, request.runtime.context.user_id, request.tools,
     )

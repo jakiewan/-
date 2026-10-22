@@ -12,7 +12,6 @@ from ..memory.context import UserContext
 from ..memory.prompts import build_user_prompt
 from ..tools.orders import find_user_order
 
-from langchain.agents.middleware import before_agent
 from langgraph.config import get_stream_writer
 
 from .intent_input import previous_exchange
@@ -95,20 +94,6 @@ async def recognize_intent(state: CustomerServiceState, *, model) -> dict:
             "needs_clarification": decision.needs_clarification,
             "clarification_question": (decision.clarification_question or "请问您具体需要咨询或处理什么问题？")
             if decision.needs_clarification else ""}
-
-
-def create_intent_middleware(model):
-    @before_agent(name=recognize_intent.__name__, state_schema=CustomerServiceState)
-    async def identify(state, runtime):
-        result = await recognize_intent(state, model=model)
-        get_stream_writer()({
-            "intent": result["intent"], "reason": result["intent_reason"],
-            "source": result["intent_source"],
-            "context_used": result["intent_context_used"],
-        })
-        return result
-
-    return identify
 
 
 logger = logging.getLogger(__name__)
@@ -259,7 +244,7 @@ async def generate_answer(state: CustomerServiceState, runtime: Runtime[UserCont
         if state["business_result"].get("simulated"):
             answer += "\n以上依据演示用模拟资料，不代表真实商品参数或正式政策。"
         return {"answer_candidate": answer}
-    prompt = await build_user_prompt(state, runtime.store, runtime.context.user_id, [])
+    prompt = await build_user_prompt(state, runtime.store, runtime.context.user_id)
     writer = get_stream_writer()
     chunks = []
     answer_model = model.model_copy(update={"temperature": 0.1}) if state["business_result"].get("kind") == "knowledge" else model
