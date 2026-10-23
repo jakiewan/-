@@ -15,7 +15,7 @@ from ..tools.orders import find_user_order
 
 from langgraph.config import get_stream_writer
 
-from .intent_input import previous_exchange
+from .intent_input import previous_exchange, recent_exchanges
 from .after_sales import handle_after_sales
 from .state import CustomerServiceState, Intent
 
@@ -32,6 +32,9 @@ def fixed_chitchat_reply(text: str) -> str | None:
 
 async def recognize_intent(state: CustomerServiceState, *, model) -> dict:
     """先匹配 Python 规则，再由 LLM 分类主意图；业务参数和执行由原业务节点负责。"""
+    if state.get("needs_clarification"):
+        return {"intent": "售后", "intent_source": "旧任务兼容", "intent_reason": "旧多任务需重新选择",
+                "intent_context_used": True, "intent_confidence": None, "is_complex": False}
     messages = state["messages"]
     if not messages or messages[-1].type != "human" or not messages[-1].text.strip():
         raise ValueError("意图分类需要最后一条消息为用户消息")
@@ -39,7 +42,7 @@ async def recognize_intent(state: CustomerServiceState, *, model) -> dict:
     if re.fullmatch(r"(?:请)?(?:帮我)?转人工(?:客服)?", messages[-1].text.strip().strip("，,。.!！?？~～").strip()):
         return {"intent": "转人工", "intent_reason": "完整匹配转人工规则", "intent_source": "Python 规则",
                 "intent_confidence": None, "intent_context_used": False, "is_complex": False, "tool_rounds": 0,
-                "tasks": [task for task in state.get("tasks", []) if task["task_id"] != "after_sales"],
+                "tasks": [task for task in state.get("tasks", []) if task["intent"] != "售后"],
                 "needs_clarification": False, "clarification_question": ""}
     if fixed_chitchat_reply(messages[-1].text):
         return {"intent": "闲聊", "intent_reason": "完整匹配固定寒暄规则", "intent_source": "Python 规则",
@@ -88,12 +91,11 @@ async def recognize_intent(state: CustomerServiceState, *, model) -> dict:
         logger.warning("LLM 意图结果格式无效，改为澄清，不执行业务")
         return {**base, "intent": "咨询", "intent_reason": "分类结果格式无效，需要澄清",
                 "needs_clarification": True, "clarification_question": "请问您具体需要咨询或处理什么问题？"}
-    if decision.intent == "售后" and any(task["task_id"] == "after_sales" for task in state["tasks"]):
+    if decision.intent == "售后" and any(task["intent"] == "售后" for task in state["tasks"]):
         # 已确定售后意图的补参和否定交回业务节点，避免分类器截断正在办理的任务。
         decision.needs_clarification = False
     return {**base, "intent": decision.intent, "intent_reason": decision.reason,
-            "tasks": state["tasks"] if decision.intent == "售后" or decision.needs_clarification else
-                     [task for task in state["tasks"] if task["task_id"] != "after_sales"],
+            "tasks": state["tasks"],
             "needs_clarification": decision.needs_clarification,
             "clarification_question": (decision.clarification_question or "请问您具体需要咨询或处理什么问题？")
             if decision.needs_clarification else ""}
@@ -112,7 +114,7 @@ class IntentDecision(BaseModel):
 def routing_input(state: CustomerServiceState) -> HumanMessage:
     """控制节点只读本轮和上一轮完整问答，避免旧工具调用干扰结构化分类。"""
     return HumanMessage(content=json.dumps({
-        "previous_exchange": previous_exchange(state["messages"]),
+        "previous_exchange": recent_exchanges(state["messages"]),
         "current_message": state["messages"][-1].text,
         "pending_tasks": state.get("tasks", []),
     }, ensure_ascii=False))
@@ -120,15 +122,24 @@ def routing_input(state: CustomerServiceState) -> HumanMessage:
 
 async def prepare_context(state: CustomerServiceState) -> dict:
     """清理本轮临时值；保留历史和待补参任务的有效槽位，不复用上轮查询事实。"""
+    tasks = []
+    for task in state.get('tasks', []):
+        if task['status'] not in ('needs_info', 'awaiting_confirmation') and not (task['intent'] == '售后' and task['status'] == 'succeeded'):
+            continue
+        saved = {key: value for key, value in task.items() if key not in ('managed', 'depends_on', 'condition', 'history', 'run_this_turn', 'turn_input', 'current_turn')}
+        if task.get('managed') and task['intent'] == '售后':
+            saved['result'] = (task.get('result') or {}).get('application')
+        tasks.append(saved)
+    ambiguous = sum(task['intent'] == '售后' and task['status'] != 'succeeded' for task in tasks) > 1
+    if ambiguous:
+        tasks = [task for task in tasks if task['intent'] != '售后']
     return {
         "context": "", "tool_rounds": 0, "requires_tools": False,
         "requires_handoff": False, "handoff_reason": "", "handoff_result": None,
-        "needs_clarification": False, "clarification_question": "", "is_complex": False,
+        "needs_clarification": ambiguous, "clarification_question": "已停止旧版多任务处理，原多项待提交申请未自动续办；请重新说明本次要办理的一项申请，已提交记录仍保留。" if ambiguous else "", "is_complex": False,
         "business_result": {}, "evidence": [], "actions": [],
         "answer_candidate": "", "answer_valid": False, "validation_reason": "",
-        "tasks": [{**task, "result": task["result"] if task["task_id"] == "after_sales" else None, "evidence": []}
-                  for task in state.get("tasks", []) if task["status"] == "needs_info"
-                  or (task["task_id"] == "after_sales" and task["status"] == "succeeded")],
+        "tasks": tasks,
     }
 
 
@@ -151,7 +162,7 @@ async def retrieve_knowledge(state: CustomerServiceState, *, pipeline) -> dict:
     pending = next((task for task in state["tasks"] if task["task_id"] == "knowledge"), {})
     result = await pipeline.ainvoke({
         # 简短确认和补参需要上一轮问题，不能只给最早的任务文本。
-        "question": question, "history": "" if new_topic else previous_exchange(state["messages"]),
+        "question": question, "history": "" if new_topic else recent_exchanges(state["messages"]),
         "pending": {} if new_topic else pending, "evidence": [], "failed": False,
     })
     output = result["output"]

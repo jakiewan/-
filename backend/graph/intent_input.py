@@ -12,6 +12,18 @@ def previous_exchange(messages: list) -> str:
     return format_exchange(messages[previous_user].text, answers[-1].text)
 
 
+def recent_exchanges(messages: list, max_turns: int = 3) -> str:
+    """保留最近完整问答，供连续追问沿用型号和业务背景。"""
+    starts = [i for i, message in enumerate(messages[:-1]) if message.type == 'human'][-max_turns:]
+    exchanges = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(messages) - 1
+        answers = [message.text for message in messages[start + 1:end] if message.type == 'ai' and message.text and not message.tool_calls]
+        if answers:
+            exchanges.append(format_exchange(messages[start].text, answers[-1]))
+    return '\n\n'.join(exchanges)
+
+
 def encode_intent_inputs(tokenizer, texts: list[str], histories: list[str], context_turns: int, max_length: int):
     questions = tokenizer([f"用户：{text}" if context_turns else text for text in texts], add_special_tokens=False, verbose=False)["input_ids"]
     contexts = tokenizer(histories if context_turns else [""] * len(texts), add_special_tokens=False, verbose=False)["input_ids"]

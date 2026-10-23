@@ -33,14 +33,15 @@ class AfterSalesInput(BaseModel):
 
 
 async def handle_after_sales(state: CustomerServiceState, runtime: Runtime[UserContext], *, model) -> dict:
-    pending = next((task for task in state["tasks"] if task["task_id"] == "after_sales"), {})
+    pending = next((task for task in state["tasks"] if task["intent"] == "售后"), {})
+    task_id = pending.get("task_id", "after_sales")
     slots = dict(pending.get("slots", {}))
-    other_tasks = [task for task in state["tasks"] if task["task_id"] != "after_sales"]
+    other_tasks = [task for task in state["tasks"] if task["task_id"] != task_id]
     question = state["messages"][-1].text
 
     def output(message, *, status="needs_info", order=None, application=None, clear=False, confirmation_required=False):
         task = {
-            "task_id": "after_sales", "intent": "售后",
+            "task_id": task_id, "intent": "售后",
             "request": pending.get("request", question), "slots": slots,
             "status": "succeeded" if application else "needs_info",
             "result": application, "evidence": [],
