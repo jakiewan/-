@@ -88,3 +88,8 @@ async def logout(request: Request, response: Response):
         await conn.execute("DELETE FROM customer_chat.login_sessions WHERE token_hash = %s",
                            (sha256(request.cookies.get(COOKIE_NAME, "").encode()).hexdigest(),))
     response.delete_cookie(COOKIE_NAME, path="/api", httponly=True, samesite="strict")
+
+
+def pilot_enabled(username):
+    allowed = os.getenv('FEATURE_USER_ALLOWLIST', '*')
+    return allowed.strip() == '*' or username in {name.strip() for name in allowed.split(',')}

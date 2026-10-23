@@ -12,6 +12,7 @@ from ..memory.context import UserContext
 from ..memory.prompts import build_user_prompt
 from ..memory.profile import handle_profile
 from ..tools.orders import find_user_order
+from ..tools.after_sales import STATUS_LABELS
 
 from langgraph.config import get_stream_writer
 
@@ -171,7 +172,7 @@ async def retrieve_knowledge(state: CustomerServiceState, *, pipeline) -> dict:
 
 
 class OrderQuery(BaseModel):
-    query_target: Literal["order", "product", "unclear"] = Field(description="本轮明确查本人订单/物流为 order；商品信息为 product；对象不明为 unclear。不能因 BERT 结果假定一定查订单")
+    query_target: Literal["order", "product", "application", "unclear"] = Field(description="本轮明确查本人订单/物流为 order；商品信息为 product；对象不明为 unclear。不能因 BERT 结果假定一定查订单")
     order_no: str | None = Field(default=None, max_length=64, description="本轮用户明确指定的订单号；没有提供则 null，不能从历史补出")
     product_name: str | None = Field(description="本轮限定的商品名称、品牌或型号，原样复制；未限定商品则 null，不能忽略用户明确的商品条件", max_length=128)
     ambiguous: bool = Field(default=False, description="本轮明确要求查多笔订单且不能确定单笔查询对象时为 true")
@@ -185,7 +186,7 @@ async def query_order(state: CustomerServiceState, runtime: Runtime[UserContext]
         result = await model.ainvoke([
             SystemMessage(content=(
                 "核对本轮查询对象并抽取条件，返回 JSON，不回答问题、不调用工具。BERT 分类只是候选，不保证用户在查订单。"
-                "明确说订单、物流、发货、自己购买的商品进度才允许 query_target=order。"
+                "明确查询售后申请单状态/进度/记录时 query_target=application；明确说订单、物流、发货、自己购买的商品进度才允许 query_target=order。"
                 "查询某品牌/型号的产品信息，或仅说查某品牌/型号而没有订单物流语义时 query_target=product；无法明确对象则 unclear。"
                 "product 时不要把型号里的数字当订单号。不能因为未提供订单号就将商品查询解释成查最新订单。"
                 "明确查某商品订单时，query_target=order，product_name 必须保留该商品的名称或型号，不得忽略条件。"
@@ -198,6 +199,15 @@ async def query_order(state: CustomerServiceState, runtime: Runtime[UserContext]
             )), HumanMessage(content=question),
         ])
         slots = parser.parse(result.text)
+        if slots.query_target == 'application':
+            if slots.order_no and slots.order_no not in question:
+                raise ValueError('订单号必须来自用户原文')
+            async with runtime.context.db_pool.connection() as conn:
+                rows = await (await conn.execute("""SELECT application_no,order_no,action,status,is_demo FROM customer_chat.after_sales_applications
+                    WHERE user_id=%s AND (%s::text IS NULL OR order_no=%s) ORDER BY created_at DESC LIMIT 20""",
+                    (runtime.context.user_id,slots.order_no,slots.order_no))).fetchall()
+            text = '\n'.join(f"{r['application_no']}，订单 {r['order_no']}，{STATUS_LABELS.get(r['status'],r['status'])}" for r in rows)
+            return {'business_result':{'kind':'after_sales','status':'ok','message':(text or '尚未找到您的本地售后申请记录。')+'\n以上仅为本项目本地状态，非外部商城回执。'}}
         if slots.query_target == "product":
             return {"intent": "咨询", "intent_source": "订单节点语义校验",
                     "intent_reason": f"查询目标 {slots.query_target}，商品 {slots.product_name or '未指定'}",

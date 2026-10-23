@@ -18,6 +18,8 @@ from .rag import FaqRetriever
 from .common.auth import current_user, router as auth_router
 from .tools.orders import setup_orders
 from .tools.after_sales import setup_after_sales
+from .tools.eligibility import setup_eligibility
+from .api.business import router as business_router
 from .tools.conversations import setup_conversations
 from .conversation_service import MessageInput, accept_message, reply_events, process_queue, sse, router as conversation_router
 from .utils.feishu_client import notification_worker
@@ -53,6 +55,7 @@ async def lifespan(app: FastAPI):
                 await store.setup()
                 await setup_orders(conn)
                 await setup_after_sales(conn)
+                await setup_eligibility(conn)
                 await setup_conversations(conn)
             finally:
                 await conn.execute("SELECT pg_advisory_unlock(hashtextextended('customer_chat:setup', 0))")
@@ -87,6 +90,7 @@ app.include_router(auth_router)
 logger = logging.getLogger(__name__)
 
 app.include_router(conversation_router)
+app.include_router(business_router)
 
 
 @app.middleware("http")

@@ -59,7 +59,21 @@ async def find_user_order(pool, user_id: str, order_no: str | None = None, *, pr
             order = await cur.fetchone()
     if order is None:
         return None
+    async with pool.connection() as conn:
+        fact = await (await conn.execute("""SELECT data FROM customer_chat.order_facts WHERE order_no=%s
+            AND verified_at>now()-interval '24 hours'""",(order['order_no'],))).fetchone()
+    order['signed_verified'] = bool(fact and fact['data']['is_demo']==order['is_demo'] and
+        all(any(f['sku']==i['sku'] and f.get('signed_at') and f['received_quantity']>=i['quantity'] for f in fact['data']['items']) for i in order['items']))
     order["status_label"] = ORDER_STATUSES[order["status"]]
     order["created_at"] = order["created_at"].isoformat()
     order["total_amount"] = format(order["total_amount"], ".2f")
     return order
+
+
+async def find_after_sales_orders(pool, user_id, product_name=None):
+    async with pool.connection() as conn:
+        return await (await conn.execute("""SELECT order_no FROM customer_chat.orders
+            WHERE user_id=%s AND status=ANY(%s) AND (%s::text IS NULL OR EXISTS (
+                SELECT 1 FROM jsonb_array_elements(items) item
+                WHERE strpos(lower(replace(item->>'name',' ','')), lower(replace(%s,' ','')))>0))
+            ORDER BY created_at DESC LIMIT 20""", (user_id, ['paid','processing','shipped','completed'], product_name, product_name))).fetchall()
