@@ -21,6 +21,9 @@ from .tools.orders import setup_orders
 from .tools.after_sales import setup_after_sales
 from .tools.eligibility import setup_eligibility
 from .api.business import router as business_router
+from .memory.service import setup_memory
+from .api.memory import router as memory_router
+from .memory.worker import memory_worker
 from .tools.conversations import setup_conversations
 from .conversation_service import MessageInput, accept_message, reply_events, process_queue, sse
 from .api.conversations import router as conversation_router
@@ -58,6 +61,7 @@ async def lifespan(app: FastAPI):
                 await setup_orders(conn)
                 await setup_after_sales(conn)
                 await setup_eligibility(conn)
+                await setup_memory(conn)
                 await setup_conversations(conn)
             finally:
                 await conn.execute("SELECT pg_advisory_unlock(hashtextextended('customer_chat:setup', 0))")
@@ -73,7 +77,7 @@ async def lifespan(app: FastAPI):
             if client_class is None:
                 raise ValueError("LLM_MODE 仅支持 minimax 或 deepseek")
             app.state.minimax = client_class(checkpointer, store, retriever=retriever, db_pool=pool)
-            workers = [asyncio.create_task(process_queue(app)), asyncio.create_task(notification_worker(pool))]
+            workers = [asyncio.create_task(process_queue(app)), asyncio.create_task(notification_worker(pool)), asyncio.create_task(memory_worker(pool, app.state.minimax.model))]
             try:
                 yield
             finally:
@@ -93,6 +97,7 @@ logger = logging.getLogger(__name__)
 
 app.include_router(conversation_router)
 app.include_router(business_router)
+app.include_router(memory_router)
 
 
 @app.middleware("http")

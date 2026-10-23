@@ -10,7 +10,10 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from .memory.service import settings as memory_settings, migrate_profile
+from .memory.worker import enqueue as enqueue_memory
 from pydantic import BaseModel, Field
 
 from .common.auth import current_user, is_support, support_user
@@ -147,20 +150,27 @@ async def reply_events(app, cid, message, request=None):
 async def run_message(app, conversation, message):
     pool, client = app.state.db_pool, app.state.minimax
     config = {"configurable": {"thread_id": conversation["graph_thread_id"]}}
+    await migrate_profile(pool,client.store,conversation['user_id'])
+    async with pool.connection() as conn:
+        async with conn.transaction():
+            pref = await memory_settings(conn,conversation['user_id'])
     snapshot = await client.agent.aget_state(config)
     gid = f"chat-message-{message['id']}"
     existing = snapshot.values.get("messages", [])
     known_ids = {m.id for m in existing}
     last_user = next((m for m in reversed(existing) if m.type == "human"), None)
-    same_run = last_user is not None and last_user.id == gid
+    clean_history = snapshot.values.get('memory_cutoff', 0) != pref['history_cutoff']
+    same_run = not clean_history and last_user is not None and last_user.id == gid
+    if clean_history:
+        known_ids = set()
     if same_run and not snapshot.next and existing[-1].type == "ai":
         payload = client.final_payload(snapshot.values)
     else:
         async with pool.connection() as conn:
             history = await (await conn.execute("""SELECT * FROM customer_chat.conversation_messages
-                WHERE conversation_id = %s AND id <= %s AND role IN ('user','assistant','agent') ORDER BY id""",
-                (conversation["id"], message["id"]))).fetchall()
-        imported = []
+                WHERE conversation_id = %s AND id <= %s AND id > %s AND role IN ('user','assistant','agent') ORDER BY id""",
+                (conversation["id"], message["id"], pref["history_cutoff"]))).fetchall()
+        imported = [RemoveMessage(id=REMOVE_ALL_MESSAGES)] if clean_history else []
         for row in history:
             mid = row["graph_message_id"] or f"chat-message-{row['id']}"
             if mid in known_ids:
@@ -168,8 +178,8 @@ async def run_message(app, conversation, message):
             cls = HumanMessage if row["role"] == "user" else AIMessage
             imported.append(cls(content=row["content"], id=mid,
                                 additional_kwargs={"sender_type": row["role"]}))
-        inputs = {"messages": imported, "conversation_version": conversation["version"]}
-        if snapshot.values.get("conversation_version", 0) != conversation["version"]:
+        inputs = {"messages": imported, "conversation_version": conversation["version"], "memory_cutoff": pref["history_cutoff"]}
+        if clean_history or snapshot.values.get("conversation_version", 0) != conversation["version"]:
             inputs["tasks"] = []  # 人工接待或新会话代次使旧售后确认失效。
         elif same_run and snapshot.next:
             inputs = None
@@ -200,6 +210,7 @@ async def run_message(app, conversation, message):
                               graph_id=payload.get("graph_message_id"),
                               metadata={k: v for k, v in payload.items() if k not in ("text", "graph_message_id")})
             await conn.execute("UPDATE customer_chat.conversation_messages SET status = 'succeeded' WHERE id = %s", (message["id"],))
+            await enqueue_memory(conn,conversation["user_id"],message["id"])
 
 
 async def process_queue(app):

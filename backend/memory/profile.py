@@ -8,7 +8,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, ConfigDict, Field
 
-from .context import MEMORY_NAMESPACE
+from .service import MemoryValue, safe_memory, migrate_profile, list_memory, put_memory, forget
+from langchain_core.messages import RemoveMessage
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 logger = logging.getLogger(__name__)
 PROFILE_LABELS = {"preferred_name": "称呼", "phone_preferences": "手机选购偏好", "reply_style": "回复偏好"}
@@ -23,10 +25,12 @@ class ProfileOperation(BaseModel):
     authorization_quote: str = Field(default="", max_length=500)
 
 
-async def handle_profile(message: str, store, user_id: str, *, model) -> dict | None:
+async def handle_profile(message: str, store, user_id: str, *, model, context) -> dict | None:
     def result(text, status="ok"):
         return {"business_result": {"kind": "profile", "status": status, "message": text}}
 
+    if not safe_memory(message):
+        return result('该内容不适合保存为长期记忆，请勿提供密码、证件或联系方式。')
     try:
         parser = PydanticOutputParser(pydantic_object=ProfileOperation)
         response = await model.model_copy(update={"temperature": 0}).ainvoke([
@@ -50,7 +54,7 @@ async def handle_profile(message: str, store, user_id: str, *, model) -> dict | 
             return None
         if operation.operation == "clarify":
             return result("请明确要保存、修改、删除或查询哪一项长期画像：称呼、手机选购偏好或回复偏好；一次处理一项，保存时请给出完整内容。")
-        if not user_id or store is None:
+        if not user_id or context.db_pool is None:
             return result("当前无法访问您的长期画像，请稍后重试。", "failed")
         if operation.operation in ("set", "delete"):
             quote = operation.authorization_quote.strip()
@@ -62,22 +66,23 @@ async def handle_profile(message: str, store, user_id: str, *, model) -> dict | 
             operation.field == "all" or not operation.value.strip() or operation.value not in message
         ):
             return result("尚未保存。请提供一项明确的称呼、手机选购偏好或回复偏好。")
-        item = await store.aget(MEMORY_NAMESPACE, user_id)
-        profile = dict(item.value) if item else {}
-        if operation.operation == "read":
-            fields = PROFILE_LABELS if operation.field == "all" else {operation.field: PROFILE_LABELS[operation.field]}
-            saved = [f"{label}：{profile[field]}" for field, label in fields.items() if field in profile]
-            return result("已保存的长期画像：\n" + "\n".join(saved) if saved else "尚未记录您查询的长期画像信息。")
-        if operation.operation == "delete":
-            if operation.field == "all":
-                await store.adelete(MEMORY_NAMESPACE, user_id)
-                return result("已清除您的长期画像；聊天历史和业务记录不受影响。")
-            profile.pop(operation.field, None)
-            await store.aput(MEMORY_NAMESPACE, user_id, profile)
-            return result(f"已删除长期画像中的{PROFILE_LABELS[operation.field]}；聊天历史和业务记录不受影响。")
-        profile[operation.field] = operation.value.strip()
-        await store.aput(MEMORY_NAMESPACE, user_id, profile)
-        return result(f"已记住您的{PROFILE_LABELS[operation.field]}：{operation.value.strip()}。")
+        await migrate_profile(context.db_pool, store, user_id)
+        async with context.db_pool.connection() as conn:
+            async with conn.transaction():
+                if operation.operation == 'read':
+                    rows = await list_memory(conn,user_id)
+                    saved = [f"{PROFILE_LABELS.get(row['memory_key'],row['memory_key'])}：{row['value']}" for row in rows
+                             if operation.field == 'all' or row['memory_key'] == operation.field]
+                    return result('已保存的长期记忆：\n'+'\n'.join(saved) if saved else '尚未记录您查询的长期记忆信息。')
+                if operation.operation == 'delete':
+                    await forget(conn,user_id,None if operation.field=='all' else operation.field,current_message_id=context.message_id)
+                    return {**result('长期记忆已删除，旧聊天记录仍可查看，但不会继续用于个性化推理；待提交申请需要重新确认。'),
+                            'messages':[RemoveMessage(id=REMOVE_ALL_MESSAGES),HumanMessage(content=message,id=f'chat-message-{context.message_id}')],
+                            'tasks':[], 'memory_cutoff':context.message_id or 0}
+                await put_memory(conn,user_id,MemoryValue(key=operation.field,value=operation.value.strip(),quote=operation.authorization_quote),
+                                 sequence=context.message_id or 0)
+        return result(f'已记住您的{PROFILE_LABELS[operation.field]}：{operation.value.strip()}。')
+
     except Exception as exc:
         logger.warning("长期画像操作失败：%s", type(exc).__name__)
         return result("本次长期画像操作未能完成或确认结果，请稍后查询核对。", "failed")

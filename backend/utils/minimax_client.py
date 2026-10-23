@@ -31,6 +31,8 @@ class MiniMaxClient:
                 use_responses_api=False,
                 http_socket_options=(),
             )
+        self.store = store
+        self.model = model
         self.checkpointer = checkpointer
         self.db_pool = db_pool
         self.node_labels = {

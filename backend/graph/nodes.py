@@ -149,7 +149,7 @@ async def handle_chitchat(state: CustomerServiceState, runtime: Runtime[UserCont
     reply = fixed_chitchat_reply(state["messages"][-1].text)
     if reply:
         return {"business_result": {"status": "ok", "kind": "fixed_chitchat", "message": reply}}
-    profile_result = await handle_profile(state["messages"][-1].text, runtime.store, runtime.context.user_id, model=model)
+    profile_result = await handle_profile(state["messages"][-1].text, runtime.store, runtime.context.user_id, model=model, context=runtime.context)
     if profile_result is not None:
         return profile_result
     return {"business_result": {"status": "ok", "message": "普通闲聊，本轮未修改长期画像；天气工具暂未开放，不能声称已经执行。"}}
@@ -271,7 +271,7 @@ async def generate_answer(state: CustomerServiceState, runtime: Runtime[UserCont
         if state["business_result"].get("simulated"):
             answer += "\n以上依据演示用模拟资料，不代表真实商品参数或正式政策。"
         return {"answer_candidate": answer}
-    prompt = await build_user_prompt(state, runtime.store, runtime.context.user_id)
+    prompt = await build_user_prompt(state, runtime.store, runtime.context.user_id, pool=runtime.context.db_pool)
     writer = get_stream_writer()
     chunks = []
     answer_model = model.model_copy(update={"temperature": 0.1}) if state["business_result"].get("kind") == "knowledge" else model

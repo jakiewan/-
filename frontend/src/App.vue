@@ -1,6 +1,9 @@
 <script setup>
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import LoginForm from './LoginForm.vue'
+import MemoryPanel from './MemoryPanel.vue'
+const memoryOpen = ref(false)
+const settingsDialog = ref(null)
 import SupportConversation from './SupportConversation.vue'
 
 const user = ref(null)
@@ -26,7 +29,6 @@ function intentDetails(message, previous) {
   }
   return message.intent
 }
-
 
 function mergeMessage(message) {
   if (message.reply_to) {
@@ -106,6 +108,12 @@ function backToChat() {
   loadHistory()
 }
 
+async function openSettings() {
+  memoryOpen.value = true
+  await nextTick()
+  settingsDialog.value.showModal()
+}
+
 async function requestHuman() {
   if (!session.value || session.value.mode === 'waiting_human' || session.value.mode === 'human') return
   try {
@@ -117,6 +125,7 @@ async function requestHuman() {
     applyState(await response.json())
   } catch (error) { authError.value = error.message }
 }
+
 
 onUnmounted(() => { eventSource?.close(); activeRequest?.abort() })
 
@@ -138,6 +147,8 @@ const messages = ref([
 ])
 
 function changeUser(value) {
+  settingsDialog.value?.close()
+  memoryOpen.value = false
   accountVersion += 1
   eventSource?.close()
   activeRequest?.abort()
@@ -330,6 +341,7 @@ async function sendMessage(text = question.value.trim(), clientId = crypto.rando
         <div class="account-controls">
           <span class="account-name">{{ user.username }}</span>
           <button v-if="user.is_support" class="switch-account" type="button" @click="openSupport">客服工作台</button>
+          <button class="switch-account" type="button" aria-haspopup="dialog" @click="openSettings">设置</button>
           <button class="switch-account" type="button" :disabled="sending || switching" @click="logout">{{ switching ? '退出中…' : '退出 / 切换账号' }}</button>
         </div>
       </aside>
@@ -457,6 +469,10 @@ async function sendMessage(text = question.value.trim(), clientId = crypto.rando
         <p class="input-hint">按 Enter 发送 <span>会话按账号保存，刷新可恢复历史</span></p>
       </footer>
       </section>
+      <dialog ref="settingsDialog" class="settings-dialog" aria-labelledby="settings-title" @close="memoryOpen = false">
+        <h2 id="settings-title">设置</h2>
+        <MemoryPanel v-if="memoryOpen" @close="settingsDialog.close()" @changed="loadHistory" />
+      </dialog>
     </div>
     <p class="page-footer">服务通 <span>·</span> 让每一个问题，都得到回应。</p>
   </main>
