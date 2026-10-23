@@ -1,3 +1,4 @@
+from ..utils.budget import count_tool
 """固定知识流水线：问题重写 → FAQ → 文档双路检索 → RRF → 精排。"""
 
 import asyncio
@@ -198,6 +199,7 @@ def build_rag_pipeline(model, retriever):
         return "phone_graph_search" if state["prepared"].get("phone_graph") else "faq_search"
 
     async def phone_graph_search(state: RagState):
+        await count_tool()
         query = state["prepared"]
         graph = getattr(retriever, "phone_graph", None)
         if graph is not None:
@@ -217,6 +219,7 @@ def build_rag_pipeline(model, retriever):
         return "rag_result" if state["result"].get("graph_answer") else "faq_search"
 
     async def faq_search(state: RagState):
+        await count_tool()
         query = state["prepared"]
         try:
             result = await asyncio.to_thread(
@@ -236,6 +239,7 @@ def build_rag_pipeline(model, retriever):
         return "document_search" if not state.get("failed") and state["result"]["status"] in ("no_match", "ambiguous") else "rag_result"
 
     async def document_search(state: RagState):
+        await count_tool()
         query = state["prepared"]
         if not query["product_model"]:
             if query["requires_model"]:
@@ -284,6 +288,7 @@ def build_rag_pipeline(model, retriever):
             return {"failed": True}
 
     async def hyde_search(state: RagState):
+        await count_tool()
         try:
             result = await asyncio.to_thread(
                 retriever.search_documents, state["hyde_query"],
@@ -302,6 +307,7 @@ def build_rag_pipeline(model, retriever):
         return {"evidence": evidence}
 
     async def rag_rerank(state: RagState):
+        await count_tool()
         try:
             evidence = await asyncio.to_thread(retriever.rerank, state["prepared"]["query"], state["evidence"], state["prepared"]["product_models"])
             return {"evidence": evidence, "result": {"status": "ok" if evidence else "no_match"}}

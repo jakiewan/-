@@ -15,21 +15,34 @@ from psycopg_pool import AsyncConnectionPool
 from .utils.minimax_client import MiniMaxClient
 from .utils.deepseek_client import DeepSeekClient
 from .rag import FaqRetriever
-from .common.auth import current_user
+from .common.auth import current_user, support_user
 from .api.auth import router as auth_router
 from .tools.orders import setup_orders
 from .tools.after_sales import setup_after_sales
 from .tools.eligibility import setup_eligibility
 from .api.business import router as business_router
+from .tools.conversations import setup_conversations
+from .conversation_service import MessageInput, accept_message, reply_events, process_queue, sse
+from .api.conversations import router as conversation_router
+from .utils.feishu_client import notification_worker
 from .memory.service import setup_memory
 from .api.memory import router as memory_router
 from .memory.worker import memory_worker
 from .knowledge_service import setup_knowledge
 from .api.knowledge import router as knowledge_router
-from .tools.conversations import setup_conversations
-from .conversation_service import MessageInput, accept_message, reply_events, process_queue, sse
-from .api.conversations import router as conversation_router
-from .utils.feishu_client import notification_worker
+
+async def retain_events(pool):
+    while True:
+        try:
+            days = max(1, min(90, int(os.getenv('EVENT_RETENTION_DAYS', '7'))))
+            async with pool.connection() as conn:
+                await conn.execute("DELETE FROM customer_chat.conversation_events WHERE created_at<now()-(%s*interval '1 day')", (days,))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning('事件保留清理失败: %s', type(exc).__name__)
+        await asyncio.sleep(60)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -63,9 +76,9 @@ async def lifespan(app: FastAPI):
                 await setup_orders(conn)
                 await setup_after_sales(conn)
                 await setup_eligibility(conn)
+                await setup_conversations(conn)
                 await setup_memory(conn)
                 await setup_knowledge(conn)
-                await setup_conversations(conn)
             finally:
                 await conn.execute("SELECT pg_advisory_unlock(hashtextextended('customer_chat:setup', 0))")
         app.state.db_pool = pool
@@ -82,7 +95,8 @@ async def lifespan(app: FastAPI):
             if client_class is None:
                 raise ValueError("LLM_MODE 仅支持 minimax 或 deepseek")
             app.state.minimax = client_class(checkpointer, store, retriever=retriever, db_pool=pool)
-            workers = [asyncio.create_task(process_queue(app)), asyncio.create_task(notification_worker(pool)), asyncio.create_task(memory_worker(pool, app.state.minimax.model))]
+            workers = [*[asyncio.create_task(process_queue(app)) for _ in range(max(1,min(4,int(os.getenv('CHAT_WORKERS','2')))))], asyncio.create_task(notification_worker(pool)),
+                       asyncio.create_task(memory_worker(pool, app.state.minimax.model)), asyncio.create_task(retain_events(pool))]
             try:
                 yield
             finally:
@@ -140,3 +154,30 @@ async def stream_chat(body: MessageInput, request: Request, user_id: str = Depen
     return StreamingResponse(generate(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache", "X-Accel-Buffering": "no",
     })
+
+
+@app.get('/api/health')
+async def health(request: Request):
+    try:
+        async with request.app.state.db_pool.connection() as conn:
+            await conn.execute('SELECT 1')
+        return {'status': 'ok'}
+    except Exception:
+        return JSONResponse({'status': 'unavailable'},status_code=503)
+
+
+@app.get('/api/support/metrics')
+async def metrics(request: Request, user_id: str = Depends(support_user)):
+    async with request.app.state.db_pool.connection() as conn:
+        messages = await (await conn.execute("""SELECT status,count(*) AS count FROM customer_chat.conversation_messages
+            WHERE role='user' AND created_at>now()-interval '24 hours' GROUP BY status""")).fetchall()
+        waiting = await (await conn.execute("""SELECT count(*) AS count,coalesce(max(extract(epoch FROM(now()-created_at))),0) AS longest_wait_seconds
+            FROM customer_chat.support_requests WHERE status='open'""")).fetchone()
+        notifications = await (await conn.execute('SELECT notification_status,count(*) AS count FROM customer_chat.support_requests GROUP BY notification_status')).fetchall()
+        memory = await (await conn.execute('SELECT status,count(*) AS count FROM customer_chat.memory_jobs GROUP BY status')).fetchall()
+        latency = await (await conn.execute("""SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY (metadata->>'elapsed_ms')::float) AS p50_ms,
+            percentile_cont(0.95) WITHIN GROUP (ORDER BY (metadata->>'elapsed_ms')::float) AS p95_ms,
+            sum((metadata->'usage'->>'model_calls')::int) AS model_calls,
+            sum((metadata->'usage'->>'tool_calls')::int) AS tool_calls
+            FROM customer_chat.conversation_messages WHERE role='assistant' AND created_at>now()-interval '24 hours'""")).fetchone()
+    return {'messages_24h':messages,'human_waiting':waiting,'notifications':notifications,'memory_jobs':memory,'latency_usage_24h':latency}

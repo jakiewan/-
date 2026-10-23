@@ -7,16 +7,19 @@ import os
 import re
 from contextlib import aclosing, suppress
 from uuid import UUID, uuid4
+from datetime import datetime, timezone
+from psycopg import AsyncConnection
+from psycopg.rows import dict_row
+from .utils.budget import TurnBudget, ACTIVE_BUDGET, error_kind
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi import HTTPException
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from .memory.service import settings as memory_settings, migrate_profile
 from .memory.worker import enqueue as enqueue_memory
 from pydantic import BaseModel, Field
 
-from .common.auth import current_user, is_support, support_user
+from .common.auth import current_user, is_support
 from .memory.context import UserContext
 from .tools.conversations import (add_message, conversation_view, emit, get_or_create,
                                   locked_conversation, message_view, request_handoff)
@@ -47,27 +50,6 @@ async def access(conn, conversation_id, user_id):
     return row
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async def accept_message(request, body, user_id):
     pool = request.app.state.db_pool
     cid = str(body.conversation_id) if body.conversation_id else await get_or_create(pool, request.app.state.minimax, user_id)
@@ -84,6 +66,12 @@ async def accept_message(request, body, user_id):
                     if old["content"] != body.message or old["role"] != "user" or (body.confirmation is not None and old["metadata"].get("confirmation") != body.confirmation):
                         raise HTTPException(409, "同一消息标识不能用于不同内容")
                     return cid, old
+            count = await (await conn.execute("""SELECT count(*) AS n FROM customer_chat.conversation_messages
+                WHERE conversation_id=%s AND role='user' AND created_at>now()-interval '1 minute'""",(cid,))).fetchone()
+            pending = await (await conn.execute("""SELECT count(*) AS n FROM customer_chat.conversation_messages
+                WHERE conversation_id=%s AND status IN ('queued','running')""",(cid,))).fetchone()
+            if count['n'] >= int(os.getenv('CHAT_MESSAGES_PER_MINUTE','20')) or pending['n'] >= 3:
+                raise HTTPException(429,'消息较多，请等待当前处理完成后重试')
             if conversation["mode"] == "closed":
                 conversation = await (await conn.execute("""UPDATE customer_chat.conversations
                     SET mode = 'ai', version = version + 1 WHERE id = %s RETURNING *""", (cid,))).fetchone()
@@ -108,9 +96,6 @@ async def accept_message(request, body, user_id):
 def sse(kind, data, seq=None):
     prefix = f"id: {seq}\n" if seq is not None else ""
     return f"{prefix}event: {kind}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-
 
 
 async def reply_events(app, cid, message, request=None):
@@ -148,6 +133,16 @@ async def reply_events(app, cid, message, request=None):
 
 
 async def run_message(app, conversation, message):
+    budget = TurnBudget(app.state.db_pool, message)
+    token = ACTIVE_BUDGET.set(budget)
+    try:
+        async with asyncio.timeout(max(0.01,budget.remaining())):
+            await run_message_content(app,conversation,message)
+    finally:
+        ACTIVE_BUDGET.reset(token)
+
+
+async def run_message_content(app, conversation, message):
     pool, client = app.state.db_pool, app.state.minimax
     config = {"configurable": {"thread_id": conversation["graph_thread_id"]}}
     await migrate_profile(pool,client.store,conversation['user_id'])
@@ -201,6 +196,10 @@ async def run_message(app, conversation, message):
                         await emit(conn, conversation["id"], kind, data, message["id"])
         if not payload or not payload["text"]:
             raise ValueError("未取得最终回复")
+    budget = ACTIVE_BUDGET.get()
+    if budget and payload:
+        payload["usage"] = dict(budget.data)
+        payload["elapsed_ms"] = round((datetime.now(timezone.utc) - message["created_at"]).total_seconds() * 1000)
     async with pool.connection() as conn:
         async with conn.transaction():
             current = await locked_conversation(conn, conversation["id"])
@@ -224,7 +223,7 @@ async def process_queue(app):
                     WHERE c.mode = 'ai' AND m.status IN ('queued','running') ORDER BY c.id LIMIT 20""")).fetchall()
             for candidate in candidates:
                 # 会话执行锁不锁住会话行；人工控制操作和业务复核使用独立的短事务。
-                async with pool.connection() as lock_conn:
+                async with await AsyncConnection.connect(app.state.database_url,autocommit=True,row_factory=dict_row) as lock_conn:
                     acquired = await (await lock_conn.execute("SELECT pg_try_advisory_lock(hashtextextended(%s,0)) AS ok",
                                                               (f"conversation:{candidate['id']}",))).fetchone()
                     if not acquired["ok"]:
@@ -239,7 +238,7 @@ async def process_queue(app):
                             await lock_conn.execute("UPDATE customer_chat.conversation_messages SET status = 'running' WHERE id = %s", (message["id"],))
                         task = asyncio.create_task(run_message(app, conversation, message))
                         try:
-                            async with asyncio.timeout(180):
+                            async with asyncio.timeout(float(os.getenv('TURN_TIMEOUT_SECONDS', '180'))):
                                 while not task.done():
                                     await asyncio.wait({task}, timeout=0.3)
                                     current = await (await lock_conn.execute("SELECT mode,version FROM customer_chat.conversations WHERE id = %s", (conversation["id"],))).fetchone()
@@ -257,7 +256,7 @@ async def process_queue(app):
                         async with lock_conn.transaction():
                             await locked_conversation(lock_conn, candidate["id"])
                             await lock_conn.execute("UPDATE customer_chat.conversation_messages SET status = 'failed' WHERE id = %s AND status = 'running'", (message["id"],))
-                            await emit(lock_conn, candidate["id"], "run_error", {"message": "本次处理未完成，请重新咨询；已提交的业务请先查询结果。", "request_id": str(message["id"])}, message["id"])
+                            await emit(lock_conn, candidate["id"], "run_error", {"message": "本次处理未完成，请重新咨询；已提交的业务请先查询结果。", "error_kind": error_kind(exc), "request_id": str(message["id"])}, message["id"])
                     finally:
                         await lock_conn.execute("SELECT pg_advisory_unlock(hashtextextended(%s,0))", (f"conversation:{candidate['id']}",))
             await asyncio.sleep(0.3)

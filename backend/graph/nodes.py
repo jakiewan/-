@@ -19,6 +19,7 @@ from langgraph.config import get_stream_writer
 from .intent_input import previous_exchange, recent_exchanges
 from .after_sales import handle_after_sales
 from .state import CustomerServiceState, Intent
+from ..utils.budget import count_tool
 
 
 def fixed_chitchat_reply(text: str) -> str | None:
@@ -123,6 +124,14 @@ def routing_input(state: CustomerServiceState) -> HumanMessage:
 
 async def prepare_context(state: CustomerServiceState) -> dict:
     """清理本轮临时值；保留历史和待补参任务的有效槽位，不复用上轮查询事实。"""
+    from langchain_core.messages import RemoveMessage
+    from langgraph.graph.message import REMOVE_ALL_MESSAGES
+    kept, size = [], 0
+    for message in reversed(state['messages'][-12:]):
+        if kept and size + len(message.text) > 12000:
+            break
+        kept.insert(0, message)
+        size += len(message.text)
     tasks = []
     for task in state.get('tasks', []):
         if task['status'] not in ('needs_info', 'awaiting_confirmation') and not (task['intent'] == '售后' and task['status'] == 'succeeded'):
@@ -135,6 +144,7 @@ async def prepare_context(state: CustomerServiceState) -> dict:
     if ambiguous:
         tasks = [task for task in tasks if task['intent'] != '售后']
     return {
+        'messages': [RemoveMessage(id=REMOVE_ALL_MESSAGES), *kept],
         "context": "", "tool_rounds": 0, "requires_tools": False,
         "requires_handoff": False, "handoff_reason": "", "handoff_result": None,
         "needs_clarification": ambiguous, "clarification_question": "已停止旧版多任务处理，原多项待提交申请未自动续办；请重新说明本次要办理的一项申请，已提交记录仍保留。" if ambiguous else "", "is_complex": False,
@@ -181,6 +191,7 @@ class OrderQuery(BaseModel):
 async def query_order(state: CustomerServiceState, runtime: Runtime[UserContext], *, model) -> dict:
     """只抽可选订单号；数据库身份始终取登录 Runtime，不取用户文本或模型输出。"""
     question = state["messages"][-1].text
+    await count_tool()
     try:
         parser = PydanticOutputParser(pydantic_object=OrderQuery)
         result = await model.ainvoke([
@@ -301,12 +312,14 @@ async def generate_answer(state: CustomerServiceState, runtime: Runtime[UserCont
         if not text:
             continue
         chunks.append(text)
-        writer({"kind": "answer_delta", "text": text})
+
     answer = "".join(chunks)
+    if state["intent"] == "闲聊" and re.search(r"(?:已|已经|我会)(?:为您|帮您|替您)?(?:记住|记下|保存|更新|删除)", answer):
+        answer = "了解您的偏好。本轮尚未确认写入长期记忆；请在‘长期记忆’中查看实际保存结果。"
     if answer and state["business_result"].get("simulated") and "模拟" not in answer:
         suffix = "\n以上依据演示用模拟资料，不代表真实商品参数或正式政策。"
         answer += suffix
-        writer({"kind": "answer_delta", "text": suffix})
+
     return {"answer_candidate": answer}
 
 

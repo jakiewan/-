@@ -1,0 +1,8 @@
+{"id":"greeting","message":"你好","intents":["闲聊"],"contains_any":["您好"],"confirmation":false}
+{"id":"farewell","message":"再见","intents":["闲聊"],"contains_any":["再见"],"confirmation":false}
+{"id":"unknown-order","message":"查询我的订单 EVAL-NOT-EXIST-001","intents":["订单查询"],"contains_any":["未找到","没有"],"confirmation":false}
+{"id":"application-progress","message":"查询订单 EVAL-NOT-EXIST-004 的售后申请进度","intents":["订单查询"],"contains_any":["尚未找到","没有","未找到"],"confirmation":false}
+{"id":"missing-after-sales-order","message":"我要为订单 EVAL-NOT-EXIST-005 的耳机申请无理由退货","intents":["售后"],"contains_any":["未找到","核对"],"confirmation":false}
+{"id":"policy-question","message":"请问耳机能申请无理由退货吗？我现在只咨询规则，不办理申请。","intents":["咨询"],"contains_any":["核实","商品","渠道","政策","型号"],"confirmation":false}
+{"id":"temporary-preference","message":"这次我只是临时比较手机，不要保存任何长期偏好。","intents":["咨询","闲聊"],"intent_mode":"any","confirmation":false,"forbidden":["已保存","已记住","已更新"]}
+{"id":"unbound-confirmation","message":"确认提交","confirmation":false,"contains_any":["没有","核对","选择","明确","有效"]}

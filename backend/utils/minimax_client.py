@@ -12,6 +12,7 @@ from langgraph.store.postgres.aio import AsyncPostgresStore
 from ..common.constants import PROJECT_ROOT
 from ..graph.workflow import build_workflow
 from ..memory.context import UserContext
+from .budget import BudgetedModel
 
 
 class MiniMaxClient:
@@ -31,6 +32,7 @@ class MiniMaxClient:
                 use_responses_api=False,
                 http_socket_options=(),
             )
+        model = BudgetedModel(model)
         self.store = store
         self.model = model
         self.checkpointer = checkpointer
@@ -45,7 +47,7 @@ class MiniMaxClient:
             "rag_rerank": "知识正文精排", "rag_result": "整理知识证据",
             "query_order": "订单条件核对与查询", "handle_after_sales": "售后抽槽、确认与申请",
             "handle_complaint": "投诉转人工", "complex_agent": "复杂问题子图",
-            "agent_decide": "Agent 决策", "execute_tools": "执行工具（暂未接入）",
+            "agent_decide": "Agent 决策", "execute_tools": "执行独立任务与逐项确认",
             "mark_tool_limit": "工具轮次上限", "collect_agent_result": "整理子图结果",
             "aggregate_results": "结果聚合", "check_handoff": "检查人工需求",
             "handoff": "人工客服转接", "generate_answer": "生成回复候选",

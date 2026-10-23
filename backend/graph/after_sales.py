@@ -19,6 +19,7 @@ from ..tools.orders import find_user_order, find_after_sales_orders
 from ..tools.eligibility import check_eligibility
 from .intent_input import previous_exchange
 from .state import CustomerServiceState
+from ..utils.budget import count_tool
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ def selected_order_numbers(question, candidates):
 
 
 async def handle_after_sales(state: CustomerServiceState, runtime: Runtime[UserContext], *, model) -> dict:
+    await count_tool()
     task_id = next((t['task_id'] for t in state['tasks'] if t['intent'] == '售后'), str(uuid4()))
     pending = next((task for task in state['tasks'] if task['task_id'] == task_id), {})
     version = pending.get('version', 1)
