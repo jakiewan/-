@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from pymilvus import AnnSearchRequest, MilvusClient, WeightedRanker
 
 from ..common.constants import PROJECT_ROOT
+from ..knowledge_service import review_status
 from .models import HYBRID_SIGNATURE, encode_hybrid, relevance_scores, rerank_evidence
 
 CATEGORIES = {"65539": "手机", "65540": "电脑", "65541": "空调", "65542": "冰箱", "65543": "洗衣机"}
@@ -32,6 +33,7 @@ class FaqRetriever:
     def __init__(self):
         load_dotenv(PROJECT_ROOT / ".env")
         self._embedding_lock = Lock()
+        self.database_url = os.environ["DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://", 1)
         self.faq_collection = os.getenv("RAG_FAQ_COLLECTION", COLLECTION)
         self.faq_prefix = os.getenv("RAG_FAQ_PREFIX", FAQ_PREFIX)
         self.document_collection = os.getenv("RAG_DOCUMENT_COLLECTION", DOCUMENT_COLLECTION)
@@ -147,12 +149,15 @@ class FaqRetriever:
                 or not isinstance(answer.get("answer"), str) or not answer["answer"].strip()
                 or not answer.get("title") or not answer.get("policy_id")):
             raise RuntimeError("FAQ 答案缺失或适用范围、版本不一致")
+        status = review_status(answer, f"{self.faq_prefix}:answer:{item_id}:{goodsid}:{sales_channel}:{version}", self.database_url)
+        if status not in ('approved', 'pending'):
+            return {"status": "no_match", "evidence": [], "candidates": []}
         # 保留模拟标记；未知审批状态不能当作正式政策。
         evidence = {**answer, "score": round(match["score"], 4),
                     "evidence_id": f"faq:{answer['policy_id']}:{item_id}:{version}",
                     "excerpt": answer["answer"], "kind": "faq",
                     "simulated": answer.get("simulated") is not False,
-                    "approved": answer.get("approved") is True}
+                    "approved": status == 'approved', "review_status": status}
         logger.info("FAQ read collection=%s faq=%s redis_version=%s score=%.4f", self.faq_collection, item_id, version, match["score"])
         return {"status": "ok", "evidence": [evidence], "candidates": []}
 
@@ -197,13 +202,16 @@ class FaqRetriever:
                     or metadata.get("market") != "CN" or metadata.get("language") != "zh-CN"
                     or not payload.get("page_content")):
                 raise RuntimeError("文档正文版本或适用范围不一致")
+            status = review_status(payload, f"{self.document_prefix}:body:{document_id}:{version}", self.database_url)
+            if status not in ('approved', 'pending'):
+                continue
             evidence.append({
                 "evidence_id": f"document:{document_id}:{version}", "kind": "document",
                 "title": metadata["title"], "version": version, "source": metadata.get("source", document_id),
                 "product_model": entity["product_model"], "excerpt": payload["page_content"],
                 "hybrid_score": float(hit["distance"]),
                 "simulated": metadata.get("simulated") is not False,
-                "approved": metadata.get("approved") is True,
+                "approved": status == 'approved', "review_status": status,
             })
         logger.info("Document hybrid collection=%s model=%s ids=%s", self.document_collection, product_model,
                     [item["evidence_id"] for item in evidence])

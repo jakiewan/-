@@ -24,6 +24,8 @@ from .api.business import router as business_router
 from .memory.service import setup_memory
 from .api.memory import router as memory_router
 from .memory.worker import memory_worker
+from .knowledge_service import setup_knowledge
+from .api.knowledge import router as knowledge_router
 from .tools.conversations import setup_conversations
 from .conversation_service import MessageInput, accept_message, reply_events, process_queue, sse
 from .api.conversations import router as conversation_router
@@ -62,16 +64,19 @@ async def lifespan(app: FastAPI):
                 await setup_after_sales(conn)
                 await setup_eligibility(conn)
                 await setup_memory(conn)
+                await setup_knowledge(conn)
                 await setup_conversations(conn)
             finally:
                 await conn.execute("SELECT pg_advisory_unlock(hashtextextended('customer_chat:setup', 0))")
         app.state.db_pool = pool
+        app.state.database_url = database_url
         retriever = None
         try:
             try:
                 retriever = await asyncio.to_thread(FaqRetriever)
             except Exception as exc:
                 logger.warning("知识检索初始化失败：%s", type(exc).__name__)
+            app.state.retriever = retriever
             mode = os.getenv("LLM_MODE", "minimax")
             client_class = {"minimax": MiniMaxClient, "deepseek": DeepSeekClient}.get(mode)
             if client_class is None:
@@ -98,6 +103,7 @@ logger = logging.getLogger(__name__)
 app.include_router(conversation_router)
 app.include_router(business_router)
 app.include_router(memory_router)
+app.include_router(knowledge_router)
 
 
 @app.middleware("http")

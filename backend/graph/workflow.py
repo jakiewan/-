@@ -90,7 +90,7 @@ def build_workflow(*, model=None, checkpointer=None, store=None, retriever=None)
     builder.add_node("check_handoff", nodes.check_handoff)  # 根据结果和风险判断是否需要转人工。
     builder.add_node("handoff", nodes.handoff)  # 获取人工接管结果，区分未接入、失败和成功。
     builder.add_node("generate_answer", partial(nodes.generate_answer, model=model))  # 统一生成候选客服回复，保留页面动作。
-    builder.add_node("validate_answer", nodes.validate_answer)  # 校验回复事实、人工状态和动作依据。
+    builder.add_node("validate_answer", partial(nodes.validate_answer, model=model))  # 校验回复事实、人工状态和动作依据。
     builder.add_node("safe_fallback", nodes.safe_fallback)  # 校验失败时，依据可确认事实输出安全回复并结束。
 
     builder.add_edge(START, "prepare_context")
