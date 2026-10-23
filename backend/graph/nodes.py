@@ -271,7 +271,7 @@ async def generate_answer(state: CustomerServiceState, runtime: Runtime[UserCont
         return {"answer_candidate": state["handoff_result"]["message"]}
     if state["business_result"].get("status") in ("unsupported", "failed"):
         return {"answer_candidate": state["business_result"]["message"]}
-    if state["business_result"].get("kind") in ("order", "after_sales", "fixed_chitchat", "profile"):
+    if state["business_result"].get("kind") in ("order", "after_sales", "fixed_chitchat", "profile", "model_catalog"):
         return {"answer_candidate": state["business_result"]["message"]}
     if state["business_result"].get("graph_answer"):
         return {"answer_candidate": state["business_result"]["graph_answer"]}
@@ -327,7 +327,7 @@ async def validate_answer(state: CustomerServiceState, *, model=None) -> dict:
     """校验非空正文及确定性的能力边界；通过后追加最终消息，不宣称完成语义事实校验。"""
     answer = state["answer_candidate"].strip()
     expected = state["business_result"].get("message") if state["business_result"].get("status") in ("unsupported", "failed") else None
-    if state["business_result"].get("kind") in ("order", "after_sales", "fixed_chitchat", "profile"):
+    if state["business_result"].get("kind") in ("order", "after_sales", "fixed_chitchat", "profile", "model_catalog"):
         expected = state["business_result"]["message"]
     if state["handoff_result"] is not None:
         expected = state["handoff_result"]["message"]
