@@ -114,19 +114,6 @@ async function openSettings() {
   settingsDialog.value.showModal()
 }
 
-async function requestHuman() {
-  if (!session.value || session.value.mode === 'waiting_human' || session.value.mode === 'human') return
-  try {
-    const response = await fetch(`/api/conversations/${session.value.id}/handoff`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ version: session.value.version }),
-    })
-    if (!response.ok) throw new Error((await response.json()).detail || '转人工失败')
-    applyState(await response.json())
-  } catch (error) { authError.value = error.message }
-}
-
-
 onUnmounted(() => { eventSource?.close(); activeRequest?.abort() })
 
 const commonQuestions = [
@@ -353,10 +340,7 @@ async function sendMessage(text = question.value.trim(), clientId = crypto.rando
           <p><span class="status-dot"></span>{{ session?.mode === 'human' ? '人工客服接待中' : session?.mode === 'waiting_human' ? '已登记，等待人工接管' : sending ? '正在为您处理问题' : '商品咨询 · 订单查询 · 售后协助' }}</p>
         </div>
       </header>
-      <div class="conversation-controls">
-        <span v-if="loadingHistory">正在恢复会话历史…</span>
-        <button type="button" :disabled="!session || ['waiting_human', 'human'].includes(session.mode)" @click="requestHuman">{{ session?.mode === 'waiting_human' ? '等待人工接管' : session?.mode === 'human' ? '人工接待中' : '转人工客服' }}</button>
-      </div>
+      <p v-if="loadingHistory" class="conversation-loading">正在恢复会话历史…</p>
       <p v-if="authError" class="auth-error" role="alert">{{ authError }}</p>
 
       <div ref="conversation" class="conversation" :class="{ 'is-empty': messages.length === 1 }" role="log" aria-label="聊天记录" aria-live="polite" tabindex="0">
