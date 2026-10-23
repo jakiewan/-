@@ -29,12 +29,18 @@ function mergeMessage(message) {
     (message.client_message_id && item.client_message_id === message.client_message_id && item.role === message.role) ||
     (message.reply_to && item.reply_to === message.reply_to && item.role === 'assistant'))
   const value = { ...message, saved: true, pending: false }
+  if (session.value && message.version !== undefined && message.version !== session.value.version) {
+    value.confirmationRequired = false
+    value.confirmation = null
+  }
   if (found) Object.assign(found, value)
   else messages.value.push(value)
 }
 
 function applyState(value) {
+  const changed = session.value && session.value.version !== value.version
   session.value = value
+  if (changed) messages.value.forEach(message => { message.confirmationRequired = false })
   if (value.mode !== 'ai') {
     messages.value.forEach(message => {
       message.confirmationRequired = false
@@ -172,7 +178,11 @@ async function logout() {
   }
 }
 
-async function sendMessage(text = question.value.trim(), clientId = crypto.randomUUID()) {
+function confirmMessage(message) {
+  return sendMessage('确认提交', crypto.randomUUID(), message.confirmation)
+}
+
+async function sendMessage(text = question.value.trim(), clientId = crypto.randomUUID(), confirmation = null) {
   if (!text || sending.value || switching.value || loadingHistory.value || !user.value) return
 
   showCommonQuestions.value = false
@@ -184,7 +194,7 @@ async function sendMessage(text = question.value.trim(), clientId = crypto.rando
   }
   const replyIndex = messages.value.push({ role: 'assistant', text: '', steps: [], nodes: [], sources: [], orders: [], applications: [], pending: true }) - 1
   const reply = messages.value[replyIndex]
-  reply.retry = { text, clientId }
+  reply.retry = { text, clientId, confirmation }
   reply.reply_to = sent.id
   const startedAt = performance.now()
   question.value = ''
@@ -197,7 +207,7 @@ async function sendMessage(text = question.value.trim(), clientId = crypto.rando
       signal: activeRequest.signal,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ message: text, client_message_id: clientId, ...(session.value ? { conversation_id: session.value.id } : {}) }),
+      body: JSON.stringify({ message: text, client_message_id: clientId, ...(confirmation ? { confirmation } : {}), ...(session.value ? { conversation_id: session.value.id } : {}) }),
     })
     if (response.status === 401) {
       changeUser(null)
@@ -397,7 +407,7 @@ async function sendMessage(text = question.value.trim(), clientId = crypto.rando
               </ol>
             </section>
             <p v-if="session?.mode !== 'human' && session?.mode !== 'waiting_human' && message.confirmationRequired && index === messages.length - 1 && !message.pending && !message.error">
-              <button type="button" :disabled="sending || switching" @click="sendMessage('确认提交')">确认提交</button>
+              <button type="button" :disabled="sending || switching" @click="confirmMessage(message)">确认提交</button>
             </p>
             <section v-for="application in message.applications" :key="application.application_no" class="order-card after-sales-card" :aria-label="`售后申请 ${application.application_no}`">
               <header class="order-card-heading">
@@ -416,7 +426,7 @@ async function sendMessage(text = question.value.trim(), clientId = crypto.rando
                 <div><dt>提交时间</dt><dd>{{ new Date(application.created_at).toLocaleString('zh-CN') }}</dd></div>
               </dl>
             </section>
-            <p v-if="message.error" class="auth-error" role="alert">{{ message.error }} <button v-if="message.retry" type="button" :disabled="sending" @click="sendMessage(message.retry.text, message.retry.clientId)">重新获取结果</button></p>
+            <p v-if="message.error" class="auth-error" role="alert">{{ message.error }} <button v-if="message.retry" type="button" :disabled="sending" @click="sendMessage(message.retry.text, message.retry.clientId, message.retry.confirmation)">重新获取结果</button></p>
           </div>
         </article>
       </div>

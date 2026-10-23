@@ -61,7 +61,7 @@ async def submit_after_sales(pool, user_id: str, *, order_no: str, item_sku: str
                 await cur.execute("""
                     SELECT * FROM customer_chat.after_sales_applications
                     WHERE user_id = %s AND (request_id = %s OR
-                        (order_no = %s AND (item_sku = %s OR item_sku = '' OR %s = '') AND status = 'pending_review'))
+                        (order_no = %s AND (item_sku = %s OR item_sku = '' OR %s = '') AND status IN ('pending_review','approved','completed')))
                     ORDER BY created_at DESC LIMIT 1
                 """, (user_id, request_id, order_no, item_sku, item_sku))
                 application = await cur.fetchone()

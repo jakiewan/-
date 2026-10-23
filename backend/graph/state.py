@@ -1,4 +1,4 @@
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, NotRequired
 
 from langchain.agents import AgentState
 
@@ -11,10 +11,11 @@ BusinessRoute = Literal[
 
 class IntentTask(TypedDict):
     task_id: str
+    version: NotRequired[int]
     intent: Intent
     request: str
     slots: dict[str, object]
-    status: Literal["pending", "needs_info", "succeeded", "failed", "unsupported", "simulated"]
+    status: Literal["pending", "needs_info", "succeeded", "failed", "unsupported", "simulated", "awaiting_confirmation", "blocked", "cancelled"]
     result: dict[str, object] | None
     evidence: list[dict[str, object]]
 

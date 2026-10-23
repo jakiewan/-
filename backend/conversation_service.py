@@ -26,6 +26,7 @@ class MessageInput(BaseModel):
     message: str = Field(pattern=r"\S", max_length=10000)
     client_message_id: UUID | None = None
     conversation_id: UUID | None = None
+    confirmation: dict | None = None
 
 
 class VersionInput(BaseModel):
@@ -57,9 +58,16 @@ async def snapshot(conversation_id: str, request: Request, user_id: str = Depend
             conversation = await access(conn, conversation_id, user_id)
             rows = await (await conn.execute("""SELECT * FROM customer_chat.conversation_messages
                 WHERE conversation_id = %s ORDER BY id""", (conversation_id,))).fetchall()
+            intents = await (await conn.execute("""SELECT DISTINCT ON (request_id) request_id,data
+                FROM customer_chat.conversation_events WHERE conversation_id=%s AND kind='intent' AND request_id IS NOT NULL
+                ORDER BY request_id,seq DESC""", (conversation_id,))).fetchall()
+            by_request = {row['request_id']: row['data'] for row in intents}
+            for row in rows:
+                if row['role'] == 'assistant' and not row['metadata'].get('intent_details') and row['reply_to'] in by_request:
+                    row['metadata'] = {**row['metadata'], 'intent_details': by_request[row['reply_to']]}
             support = await (await conn.execute("SELECT notification_status, resolution FROM customer_chat.support_requests WHERE id = %s",
                                                (conversation["handoff_id"],))).fetchone()
-            return {"conversation": conversation_view(conversation), "messages": [message_view(row) for row in rows],
+            return {"conversation": conversation_view(conversation), "messages": [{**message_view(row), **({"confirmationRequired": False, "confirmation": None} if row["version"] != conversation["version"] or conversation["mode"] != "ai" else {})} for row in rows],
                     "notification_status": support["notification_status"] if support else None,
                     "support_note": support["resolution"] if support and is_support(user_id) else None}
 
@@ -150,14 +158,24 @@ async def accept_message(request, body, user_id):
                     WHERE conversation_id = %s AND actor = %s AND client_message_id = %s""",
                     (cid, user_id, str(body.client_message_id)))).fetchone()
                 if old:
-                    if old["content"] != body.message or old["role"] != "user":
+                    if old["content"] != body.message or old["role"] != "user" or (body.confirmation is not None and old["metadata"].get("confirmation") != body.confirmation):
                         raise HTTPException(409, "同一消息标识不能用于不同内容")
                     return cid, old
             if conversation["mode"] == "closed":
                 conversation = await (await conn.execute("""UPDATE customer_chat.conversations
                     SET mode = 'ai', version = version + 1 WHERE id = %s RETURNING *""", (cid,))).fetchone()
                 await emit(conn, cid, "state", conversation_view(conversation))
+            from .graph.after_sales import is_confirmation
+            confirmation = None
+            if body.confirmation is not None or is_confirmation(body.message):
+                previous = await (await conn.execute("""SELECT metadata,version FROM customer_chat.conversation_messages
+                    WHERE conversation_id=%s AND role='assistant' ORDER BY id DESC LIMIT 1""", (cid,))).fetchone()
+                if previous and previous['version'] == conversation['version']:
+                    confirmation = previous['metadata'].get('confirmation')
+                if body.confirmation is not None and (not is_confirmation(body.message) or not confirmation or body.confirmation != confirmation):
+                    raise HTTPException(409, '确认内容已失效，请刷新并重新核对')
             message, created = await add_message(conn, conversation, "user", user_id, body.message,
+                metadata={'confirmation': confirmation},
                 client_id=str(body.client_message_id or uuid4()), status="queued" if conversation["mode"] == "ai" else "received")
             if created and re.fullmatch(r"(?:请)?(?:帮我)?转人工(?:客服)?", body.message.strip().strip("，,。.!！?？~～")):
                 conversation = await request_handoff(conn, conversation, "用户明确要求人工客服")
@@ -274,7 +292,9 @@ async def run_message(app, conversation, message):
             inputs["tasks"] = []  # 人工接待或新会话代次使旧售后确认失效。
         elif same_run and snapshot.next:
             inputs = None
-        context = UserContext(conversation["user_id"], pool, conversation["id"], conversation["version"])
+        context = UserContext(conversation['user_id'], pool, conversation['id'], conversation['version'],
+                              message_id=message['id'], received_at=message['created_at'],
+                              confirmation=message['metadata'].get('confirmation'))
         payload = None
         async with aclosing(client.stream(message["content"], f"chat:{conversation['user_id']}", conversation["user_id"],
                             run={"inputs": inputs, "config": config}, context=context)) as stream:

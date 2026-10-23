@@ -263,7 +263,7 @@ async def handle_after_sales(state: CustomerServiceState, runtime: Runtime[UserC
                                  'fingerprint': slots['eligibility_fingerprint']}
         authorization = runtime.context.confirmation == expected_confirmation
         # 写操作只接受明确确认短句，模型的 confirm 判定不能单独授权提交。
-        if confirmed and decision.decision == "confirm" and not changed and slots.get("confirmation_message"):
+        if confirmed and decision.decision == "confirm" and not changed and slots.get("confirmation_message") and authorization:
             application = await submit_after_sales(pool, user_id, order_no=order["order_no"],
                 item_sku=slots["item_sku"], action=slots["action"], reason=slots.get("reason", ""),
                 request_id=slots["request_id"], expected_items=items, context=runtime.context,

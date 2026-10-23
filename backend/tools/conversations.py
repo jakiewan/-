@@ -52,7 +52,7 @@ def message_view(row):
     return {"id": str(row["id"]), "role": row["role"], "text": row["content"],
             "actor": row["actor"], "client_message_id": row["client_message_id"],
             "reply_to": str(row["reply_to"]) if row["reply_to"] else None,
-            "status": row["status"], "created_at": row["created_at"].isoformat(), **row["metadata"]}
+            "status": row["status"], "version": row["version"], "created_at": row["created_at"].isoformat(), **row["metadata"]}
 
 
 def conversation_view(row):

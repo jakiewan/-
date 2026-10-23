@@ -83,6 +83,7 @@ class MiniMaxClient:
             "orders": [result["order"]] if result.get("order") else [],
             "applications": [result["application"]] if result.get("application") else [],
             "confirmationRequired": bool(result.get("confirmation_required")),
+            "confirmation": result.get("confirmation"),
             "sources": [{"label": item["title"], "url": item.get("source", ""),
                          "evidence_id": item["evidence_id"]} for item in evidence],
         }
