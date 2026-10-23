@@ -69,6 +69,7 @@ def main():
         (8000, ROOT, "backend.main:app", "/openapi.json", [
             sys.executable, "-m", "uvicorn", "backend.main:app",
             "--reload", "--reload-dir", str(ROOT / "backend"),
+            "--timeout-graceful-shutdown", "5",  # SSE 长连接不能无限阻塞开发热重载。
             "--host", "127.0.0.1", "--port", "8000",
         ]),
         (5173, ROOT / "frontend", "vite", "/", [

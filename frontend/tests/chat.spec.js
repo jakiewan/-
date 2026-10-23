@@ -24,6 +24,7 @@ test.beforeEach(async ({ page }) => {
       ['delta', { text: '测试客服' }],
       ['delta', { text: '回复' }],
       ['node', { id: 'validate-1', name: 'validate_answer', label: '校验回复', status: 'done', elapsed_ms: 1 }],
+      ['final', { text: '测试客服回复', intent: '咨询', intent_details: { intent: '咨询', source: 'LLM', reason: '询问信息', context_used: false } }],
       ['progress', { step: 'save', label: '检查点已保存（非节点）', status: 'done' }],
       ['done', {}],
     ].map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join(''),
@@ -112,11 +113,15 @@ test('输入、空白校验、按钮和回车发送、接口结果展示', async
   await expect(messages).toHaveCount(5)
   await page.route('**/api/conversation', route => route.fulfill({ json: {
     conversation: { id: '11111111-1111-4111-8111-111111111111', mode: 'ai', version: 0, event_seq: 2 },
-    messages: [{ id: '1', role: 'user', text: '已保存的问题' }, { id: '2', role: 'assistant', text: '已保存的回复' }],
+    messages: [{ id: '1', role: 'user', text: '已保存的问题' }, { id: '2', role: 'assistant', text: '已保存的回复', intent: '售后', intent_details: { intent: '售后', source: 'LLM 任务规划', reason: '用户申请退货', context_used: true } }],
   } }))
   await page.reload()
   await expect(messages).toHaveCount(3)
   await expect(messages.last()).toContainText('已保存的回复')
+  await messages.last().locator('.stream-progress summary').click()
+  await expect(messages.last()).toContainText('识别意图：售后')
+  await expect(messages.last()).toContainText('意图来源：LLM 任务规划')
+  await expect(messages.last()).toContainText('已提供上一轮问答：是')
 })
 
 test('售后确认按钮发送确认提交，旧确认失效且提交期间不会重复发送', async ({ page }) => {

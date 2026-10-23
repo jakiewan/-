@@ -79,11 +79,18 @@ class MiniMaxClient:
         evidence = state.get("evidence", [])
         return {
             "text": state["messages"][-1].text,
+            "intent": state.get("intent"),
+            "intent_details": {"intent": state.get("intent"), "source": state.get("intent_source"),
+                               "reason": state.get("intent_reason"), "context_used": state.get("intent_context_used")},
+            "is_complex": bool(state.get("is_complex")),
+            "status": result.get("status", "ok"),
             "graph_message_id": state["messages"][-1].id,
             "orders": [result["order"]] if result.get("order") else [],
             "applications": [result["application"]] if result.get("application") else [],
             "confirmationRequired": bool(result.get("confirmation_required")),
-            "confirmation": result.get("confirmation"),
+            "confirmation": result.get('confirmation'),
+            "tasks": [{'task_id': t['task_id'], 'version': t.get('version', 1), 'intent': t['intent'],
+                       'status': t['status'], 'request': t['request']} for t in state.get('tasks', [])],
             "sources": [{"label": item["title"], "url": item.get("source", ""),
                          "evidence_id": item["evidence_id"]} for item in evidence],
         }

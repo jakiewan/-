@@ -15,13 +15,15 @@ from psycopg_pool import AsyncConnectionPool
 from .utils.minimax_client import MiniMaxClient
 from .utils.deepseek_client import DeepSeekClient
 from .rag import FaqRetriever
-from .common.auth import current_user, router as auth_router
+from .common.auth import current_user
+from .api.auth import router as auth_router
 from .tools.orders import setup_orders
 from .tools.after_sales import setup_after_sales
 from .tools.eligibility import setup_eligibility
 from .api.business import router as business_router
 from .tools.conversations import setup_conversations
-from .conversation_service import MessageInput, accept_message, reply_events, process_queue, sse, router as conversation_router
+from .conversation_service import MessageInput, accept_message, reply_events, process_queue, sse
+from .api.conversations import router as conversation_router
 from .utils.feishu_client import notification_worker
 
 @asynccontextmanager

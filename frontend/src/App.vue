@@ -19,6 +19,15 @@ let eventSource
 let activeRequest
 let accountVersion = 0
 
+function intentDetails(message, previous) {
+  if (message.intent_details) return message.intent_details
+  if (typeof message.intent === 'string') {
+    return { ...(previous?.intent === message.intent ? previous : {}), intent: message.intent }
+  }
+  return message.intent
+}
+
+
 function mergeMessage(message) {
   if (message.reply_to) {
     const request = messages.value.find(item => item.id === message.reply_to)
@@ -28,7 +37,7 @@ function mergeMessage(message) {
     (message.id && item.id === message.id) ||
     (message.client_message_id && item.client_message_id === message.client_message_id && item.role === message.role) ||
     (message.reply_to && item.reply_to === message.reply_to && item.role === 'assistant'))
-  const value = { ...message, saved: true, pending: false }
+  const value = { ...message, intent: intentDetails(message, found?.intent), saved: true, pending: false }
   if (session.value && message.version !== undefined && message.version !== session.value.version) {
     value.confirmationRequired = false
     value.confirmation = null
@@ -233,7 +242,7 @@ async function sendMessage(text = question.value.trim(), clientId = crypto.rando
           if (!raw) continue
           const data = JSON.parse(raw)
           if (name === 'start' && data.message_id) { sent.id = data.message_id; reply.reply_to = data.message_id }
-          if (name === 'final') { Object.assign(reply, data, { saved: true, pending: false }) }
+          if (name === 'final') { Object.assign(reply, data, { intent: intentDetails(data, reply.intent), saved: true, pending: false }) }
           if (name === 'manual') { messages.value = messages.value.filter(item => item !== reply || item.text || item.saved) }
           if (name === 'intent') reply.intent = data
           if (name === 'sources') {
@@ -351,11 +360,11 @@ async function sendMessage(text = question.value.trim(), clientId = crypto.rando
           </div>
           <div class="message-content" :class="{ 'has-business-card': message.orders?.length || message.applications?.length }">
             <span class="sender">{{ { assistant: '电商客服助手', user: '你', agent: '人工客服', system: '服务通知' }[message.role] }}</span>
-            <details v-if="message.steps" class="stream-progress">
+            <details v-if="message.steps || message.intent" class="stream-progress">
               <summary><span class="trace-status" :class="{ pending: message.pending, failed: message.error }" aria-hidden="true"></span><span>{{ message.error ? '处理未完成' : message.pending ? '正在处理' : '处理完成' }}</span><span v-if="message.intent" class="trace-intent">{{ message.intent.intent }}</span><span v-if="message.elapsedMs" class="trace-duration">{{ (message.elapsedMs / 1000).toFixed(2) }} 秒</span><span class="trace-toggle">执行详情 <span aria-hidden="true">⌄</span></span></summary>
               <div class="trace-details">
-              <p v-if="message.intent" class="intent-result"><strong>识别意图：{{ message.intent.intent }}</strong><span>意图来源：{{ message.intent.source }}</span><span v-if="message.intent.reason">{{ message.intent.reason }}</span><span>已提供上一轮问答：{{ message.intent.context_used ? '是' : '否' }}</span></p>
-              <div v-if="message.nodes.length" class="node-trace">
+              <p v-if="message.intent" class="intent-result"><strong>识别意图：{{ message.intent.intent }}</strong><span>意图来源：{{ message.intent.source || '历史消息未保存' }}</span><span v-if="message.intent.reason">{{ message.intent.reason }}</span><span>已提供上一轮问答：{{ message.intent.context_used == null ? '未保存' : message.intent.context_used ? '是' : '否' }}</span></p>
+              <div v-if="message.nodes?.length" class="node-trace">
                 <strong>Graph 节点执行轨迹</strong>
                 <ol aria-label="Graph 节点执行轨迹">
                   <li v-for="(node, nodeIndex) in message.nodes" :key="node.id" :class="node.status">
